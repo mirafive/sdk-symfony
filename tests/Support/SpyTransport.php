@@ -15,7 +15,7 @@ final class SpyTransport implements Transport
     /** @var list<Response> */
     public array $answers = [];
 
-    public function request(string $method, string $url, array $headers, ?string $body, int $timeoutMs): Response
+    public function request(string $method, string $url, array $headers, ?string $body, int $timeoutMs, int $connectTimeoutMs = 1_000): Response
     {
         $this->requests[] = compact('method', 'url', 'headers', 'body');
 

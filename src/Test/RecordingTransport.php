@@ -23,7 +23,7 @@ final class RecordingTransport implements Transport
 
     private ?string $flags = null;
 
-    public function request(string $method, string $url, array $headers, ?string $body, int $timeoutMs): Response
+    public function request(string $method, string $url, array $headers, ?string $body, int $timeoutMs, int $connectTimeoutMs = 1_000): Response
     {
         $path = (string) parse_url($url, PHP_URL_PATH);
 
