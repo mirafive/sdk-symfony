@@ -18,9 +18,14 @@ use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use Symfony\Component\Cache\Psr16Cache;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Contracts\Service\ResetInterface;
 
-/** @internal Builds the one client from the bundle configuration and remembers it, so only a client that exists is flushed. */
-final class ClientFactory
+/**
+ * @internal Builds the one client from the bundle configuration and remembers it, so only a client that exists is
+ * flushed. Tagged kernel.reset: it exists whenever the client does, so a reset between requests or Messenger messages
+ * always reaches it.
+ */
+final class ClientFactory implements ResetInterface
 {
     private ?Mira $mira = null;
 
@@ -71,6 +76,11 @@ final class ClientFactory
 
     /** Sends what the client buffered. Never throws. */
     public function flush(): void
+    {
+        $this->mira?->flush();
+    }
+
+    public function reset(): void
     {
         $this->mira?->flush();
     }

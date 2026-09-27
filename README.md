@@ -164,7 +164,7 @@ mirafive:
 
 **Flushing.** The bundle sends the buffer once per request on `kernel.terminate`, and once per command on `console.terminate`. It switches the PHP SDK's own shutdown flush off (`flushOnShutdown: false`), so nothing goes out twice. Under PHP-FPM, `kernel.terminate` runs after `fastcgi_finish_request()`, so delivery does not delay the response.
 
-**Worker runtimes** (FrankenPHP worker mode, RoadRunner, Swoole, `messenger:consume`). The bundle's listener is tagged `kernel.reset`, so every service reset between two requests or messages sends what is left in the buffer, including events tracked after the terminate flush. Request state (whether a page carried a flag bootstrap) lives on the request, not in a service, so nothing leaks into the next request. The flag document is kept on purpose: it is a process-wide cache.
+**Worker runtimes** (FrankenPHP worker mode, RoadRunner, Swoole, `messenger:consume`). Every service reset between two requests (`kernel.reset`) sends what is left in the buffer, including events tracked after the terminate flush. In `messenger:consume`, where no request and no `kernel.*` event ever happens, the buffer is also sent after each handled or failed message, so events tracked inside your handlers go out message by message. Request state (whether a page carried a flag bootstrap) lives on the request, not in a service, so nothing leaks into the next request. The flag document is kept on purpose: it is a process-wide cache.
 
 **Messenger.** Sending happens in `kernel.terminate`, which is already after the response for PHP-FPM and FrankenPHP. If you would still rather send from a worker, hand the batches to Messenger:
 
@@ -182,6 +182,7 @@ framework:
 
 - Every buffered flush is handed to Messenger as a `MiraFive\Symfony\Messenger\DeliverBatch` carrying the body exactly as the PHP SDK encoded it (its `handOff` seam). The message carries no key.
 - The worker delivers it with its own `Mira` (`deliverPrepared()`), byte for byte, so every retry reuses the batch id and MIRA FIVE stores a retried batch once. The worker's client retries briefly first; a failure that is still retryable (timeouts, `429`, `5xx`) is then thrown for your retry strategy, and refusals (`400`, `401`, `403`, `413`) are unrecoverable and go to the failure transport.
+- A worker with `enabled: false` drops queued batches on purpose. A worker that is enabled but has no secret key logs an error on the `mirafive` channel and marks the message unrecoverable, so the batch lands in the failure transport instead of vanishing.
 - Without a routing entry the message is handled synchronously, i.e. sent in `kernel.terminate` as without Messenger.
 - `$mira->send()` is never queued: it sends at once and returns the collector's receipt. So does `bin/console mirafive:check`.
 - Flag documents and segment lookups are always fetched directly.
@@ -321,7 +322,7 @@ Do not add other analytics libraries, cookies or consent banners.
 - Autowired: `MiraFive\Mira` (`track`, `identify`, `send`, `flush`) and `MiraFive\Flags\MiraFlags` (`for(userId:, anonymousId:, properties:, consent:, optedOut:)` → `enabled`, `variant`, `config`, `evaluate`, `bootstrap`).
 - Env vars: `MIRAFIVE_SECRET_KEY` (server source, server-side only), `MIRAFIVE_WEBSITE_KEY` (public), `MIRAFIVE_HOST` (optional, default `https://events.mirafive.io`).
 - Without a secret key, or with `enabled: false`, server events and flags are a silent no-op; invalid input still throws `InvalidArgumentException`. `mirafive_script()` needs only the website key.
-- Sent on `kernel.terminate` and `console.terminate`, and on `kernel.reset` in worker runtimes. Never call `flush()` in a controller.
+- Sent on `kernel.terminate` and `console.terminate`, on `kernel.reset` in worker runtimes, and after each message in `messenger:consume`. Never call `flush()` in a controller or message handler.
 - Config `mode` (server events, default `full`) and `script_mode` (tracker tag, default `consentless`) are separate.
 - Twig: `mirafive_script(options)` (tracker tag, website key, mode from `script_mode`), `mirafive_flags(unit)` (flag bootstrap; sets `Cache-Control: private, no-store`).
 - Delivery never throws; failures are logged on the `mirafive` channel. `send()` throws `MiraFive\MiraError`.

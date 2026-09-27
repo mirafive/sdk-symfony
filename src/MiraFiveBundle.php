@@ -133,15 +133,15 @@ final class MiraFiveBundle extends AbstractBundle
                 '$logger' => service('logger')->nullOnInvalid(),
                 '$test' => $test,
             ])
-            ->tag('monolog.logger', ['channel' => 'mirafive']);
+            ->tag('monolog.logger', ['channel' => 'mirafive'])
+            ->tag('kernel.reset', ['method' => 'reset']);
 
         $services->set(Mira::class)->factory([service(ClientFactory::class), 'mira']);
         $services->set(MiraFlags::class)->factory([service(Mira::class), 'flags']);
 
         $services->set(Lifecycle::class)
             ->args([service(ClientFactory::class)])
-            ->tag('kernel.event_subscriber')
-            ->tag('kernel.reset', ['method' => 'reset']);
+            ->tag('kernel.event_subscriber');
 
         $services->set(CheckCommand::class)
             ->args([service(Mira::class)])
@@ -149,8 +149,9 @@ final class MiraFiveBundle extends AbstractBundle
 
         if (is_string($bus)) {
             $services->set(DeliverBatchHandler::class)
-                ->args([service(Mira::class)])
-                ->tag('messenger.message_handler', ['handles' => DeliverBatch::class]);
+                ->args([service(ClientFactory::class), service('logger')->nullOnInvalid()])
+                ->tag('messenger.message_handler', ['handles' => DeliverBatch::class])
+                ->tag('monolog.logger', ['channel' => 'mirafive']);
         }
 
         if (ContainerBuilder::willBeAvailable('twig/twig', Environment::class, ['symfony/twig-bundle'])) {

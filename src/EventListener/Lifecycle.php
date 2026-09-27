@@ -9,14 +9,15 @@ use MiraFive\Symfony\ClientFactory;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
-use Symfony\Contracts\Service\ResetInterface;
+use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
+use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 
 /**
- * Flushes after the response was sent and after a console command, and again on kernel.reset so a worker runtime
- * (FrankenPHP, RoadRunner, messenger:consume) never carries events into the next request. The core's shutdown flush
- * is switched off, so these are the only flushes.
+ * Flushes after the response was sent, after a console command and after each message a Messenger worker handled or
+ * failed. ClientFactory::reset() covers kernel.reset. The core's shutdown flush is switched off, so these are the only
+ * flushes.
  */
-final readonly class Lifecycle implements EventSubscriberInterface, ResetInterface
+final readonly class Lifecycle implements EventSubscriberInterface
 {
     /** Set on the main request by mirafive_flags(). A request attribute, so nothing outlives the request. */
     public const string BOOTSTRAP_ATTRIBUTE = '_mirafive_flags_bootstrap';
@@ -29,6 +30,8 @@ final readonly class Lifecycle implements EventSubscriberInterface, ResetInterfa
             KernelEvents::RESPONSE => ['onResponse', -10],
             KernelEvents::TERMINATE => ['flush', -1024],
             'console.terminate' => ['flush', -1024],
+            WorkerMessageHandledEvent::class => ['flush', -1024],
+            WorkerMessageFailedEvent::class => ['flush', -1024],
         ];
     }
 
@@ -44,11 +47,6 @@ final readonly class Lifecycle implements EventSubscriberInterface, ResetInterfa
     }
 
     public function flush(): void
-    {
-        $this->clients->flush();
-    }
-
-    public function reset(): void
     {
         $this->clients->flush();
     }
