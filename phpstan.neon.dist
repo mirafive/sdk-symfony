@@ -1,0 +1,16 @@
+includes:
+    - vendor/phpstan/phpstan-symfony/extension.neon
+
+parameters:
+    level: max
+    phpVersion:
+        min: 80300
+        max: 80599
+    paths:
+        - src
+    # Public inputs are checked at runtime even where the PHPDoc already promises their shape.
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        # Used by applications' tests, not inside src.
+        - identifier: trait.unused
+          path: src/Test/InteractsWithMira.php
