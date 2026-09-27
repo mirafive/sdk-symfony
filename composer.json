@@ -13,7 +13,7 @@
     ],
     "require": {
         "php": "^8.3",
-        "mirafive/sdk-php": "^0.5",
+        "mirafive/sdk-php": "^1.0",
         "psr/log": "^1.1|^2.0|^3.0",
         "psr/simple-cache": "^2.0|^3.0",
         "symfony/cache": "^6.4|^7.0|^8.0",

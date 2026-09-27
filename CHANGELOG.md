@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.5.0 — 2026-09-27
+## 1.0.0 — 2026-09-27
 
-First release, on `mirafive/sdk-php` 0.5 and its framework seams (`enabled`, `flushOnShutdown`, `flagsRefreshSeconds`, `handOff`, `deliverPrepared()`).
+First release, on `mirafive/sdk-php` 1.0 and its framework seams (`enabled`, `flushOnShutdown`, `flagsRefreshSeconds`, `handOff`, `deliverPrepared()`).
 
 - `MiraFive\Symfony\MiraFiveBundle` (`AbstractBundle`), config key `mirafive`: `secret_key`, `website_key`, `host`, `mode`, `script_mode`, `enabled`, `messenger`, `flags.refresh_seconds`, `flags.cache`, `test`; keys from `MIRAFIVE_*` environment variables by default.
 - Autowired `MiraFive\Mira` and `MiraFive\Flags\MiraFlags` (`$mira->flags()`, one per process). Without a secret key or with `enabled: false` both record nothing.

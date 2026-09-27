@@ -16,11 +16,11 @@ composer test       # phpunit
 
 ## Developing against the unpublished core
 
-`composer.json` requires `mirafive/sdk-php: ^0.5` from Packagist. Until that is published, install from the sibling
+`composer.json` requires `mirafive/sdk-php: ^1.0` from Packagist. Until that is published, install from the sibling
 checkout with the gitignored `composer.local.json`, a copy of `composer.json` plus a path repository:
 
 ```bash
-jq '. + {repositories: [{type: "path", url: "../sdk-php", options: {symlink: true, versions: {"mirafive/sdk-php": "0.5.0"}}}]}' \
+jq '. + {repositories: [{type: "path", url: "../sdk-php", options: {symlink: true, versions: {"mirafive/sdk-php": "1.0.0"}}}]}' \
   composer.json > composer.local.json
 COMPOSER=composer.local.json composer install
 ```
