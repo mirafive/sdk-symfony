@@ -1,6 +1,6 @@
 {
     "name": "mirafive/sdk-symfony",
-    "description": "Symfony bundle for MIRA FIVE, privacy-first analytics: server-side events, feature flags and the tracker tag.",
+    "description": "MIRA FIVE SDK for Symfony",
     "type": "symfony-bundle",
     "license": "MIT",
     "keywords": ["analytics", "privacy", "gdpr", "feature-flags", "experiments", "symfony", "bundle", "mirafive"],
