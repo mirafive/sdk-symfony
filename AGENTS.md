@@ -44,3 +44,7 @@ Regenerate it whenever `composer.json` changes. CI uses `composer.json` and goes
 - Tests never touch the network: `mirafive.test` (RecordingTransport) or `tests/Support/SpyTransport`.
 - Comments only for non-obvious constraints, one or two lines.
 - Do not run git write commands unless asked; the maintainer commits.
+
+## Releasing
+
+To release, add a `## X.Y.Z — YYYY-MM-DD` section to `CHANGELOG.md`, commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. `.github/workflows/release.yml` checks the changelog, runs `composer check` and creates the GitHub release; Packagist picks the tag up by itself.
