@@ -48,7 +48,7 @@ final class MiraFiveBundle extends AbstractBundle
                     ->defaultValue('%env(default::MIRAFIVE_WEBSITE_KEY)%')
                 ->end()
                 ->scalarNode('host')
-                    ->info('Ingest host with scheme. Empty means https://events.mirafive.io.')
+                    ->info('Ingest host with scheme. Empty means https://collect.mirafive.io.')
                     ->defaultValue('%env(default::MIRAFIVE_HOST)%')
                 ->end()
                 ->enumNode('mode')

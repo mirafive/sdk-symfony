@@ -82,7 +82,7 @@ final class MessengerTest extends BundleTestCase
         self::assertCount(1, $spy->batches());
         self::assertSame($message->body, $spy->batches()[0]['body']);
         self::assertSame('Bearer '.self::KEY, $spy->batches()[0]['headers']['Authorization']);
-        self::assertSame('https://events.mirafive.io/v1/batch', $spy->batches()[0]['url']);
+        self::assertSame('https://collect.mirafive.io/v1/batch', $spy->batches()[0]['url']);
     }
 
     public function test_a_retryable_failure_is_left_to_the_retry_strategy(): void

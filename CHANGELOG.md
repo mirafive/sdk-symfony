@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Revenue events may carry `payment_id`, the payment provider's id of the payment (1–255 characters), next to `revenue` and `currency`. Nothing changes in the API: pass it in the properties. The README shows a Stripe example.
+- The default ingest host is `https://collect.mirafive.io`.
+
 - **Breaking:** feature flags and A/B experiments are removed: the autowired `MiraFive\Flags\MiraFlags`, the Twig function `mirafive_flags()`, the `flags` option of `mirafive_script()`, the `Cache-Control: private, no-store` response listener, `MiraFake::serveFlags()` and the flag endpoints of the test transport.
 - **Breaking:** the config keys `flags.refresh_seconds` and `flags.cache` are removed. The cache service that shares the delivery pause between processes is now the top-level key `cache` (default `cache.app`).
 

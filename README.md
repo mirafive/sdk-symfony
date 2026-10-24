@@ -62,6 +62,8 @@ final class SignupController extends AbstractController
 }
 ```
 
+For revenue, add `payment_id` (1–255 characters) to the properties next to `revenue` and `currency`: the payment provider's id of the payment. For Stripe pass the PaymentIntent id from a webhook: `$mira->track('order completed', properties: ['revenue' => 49, 'currency' => 'EUR', 'payment_id' => $paymentIntent->id]);`. MIRA FIVE merges the event with the payment it imports from your connected Stripe account, so the sale counts once.
+
 ### Identify after login
 
 ```php
@@ -142,7 +144,7 @@ Every key is optional. The full reference with the defaults:
 mirafive:
     secret_key: '%env(default::MIRAFIVE_SECRET_KEY)%'    # server source; server-side only
     website_key: '%env(default::MIRAFIVE_WEBSITE_KEY)%'  # website source; printed by mirafive_script()
-    host: '%env(default::MIRAFIVE_HOST)%'                # empty: https://events.mirafive.io
+    host: '%env(default::MIRAFIVE_HOST)%'                # empty: https://collect.mirafive.io
     mode: full                                           # full | consentless, for server events
     script_mode: consentless                             # consentless | full, for the tracker tag
     enabled: true                                        # false: record nothing
@@ -264,7 +266,7 @@ Do not add other analytics libraries, cookies or consent banners.
 
 - Package `mirafive/sdk-symfony`, bundle `MiraFive\Symfony\MiraFiveBundle`, config key `mirafive`. Core: `mirafive/sdk-php`, namespace `MiraFive`.
 - Autowired: `MiraFive\Mira` (`track`, `identify`, `send`, `flush`).
-- Env vars: `MIRAFIVE_SECRET_KEY` (server source, server-side only), `MIRAFIVE_WEBSITE_KEY` (public), `MIRAFIVE_HOST` (optional, default `https://events.mirafive.io`).
+- Env vars: `MIRAFIVE_SECRET_KEY` (server source, server-side only), `MIRAFIVE_WEBSITE_KEY` (public), `MIRAFIVE_HOST` (optional, default `https://collect.mirafive.io`).
 - Without a secret key, or with `enabled: false`, server events are a silent no-op; invalid input still throws `InvalidArgumentException`. `mirafive_script()` needs only the website key.
 - Sent on `kernel.terminate` and `console.terminate`, on `kernel.reset` in worker runtimes, and after each message in `messenger:consume`. Never call `flush()` in a controller or message handler.
 - Config `mode` (server events, default `full`) and `script_mode` (tracker tag, default `consentless`) are separate.
