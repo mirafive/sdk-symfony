@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MiraFive\Symfony\Tests;
 
-use MiraFive\Flags\MiraFlags;
 use MiraFive\Symfony\Tests\Support\BundleTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpFoundation\Request;
@@ -33,15 +32,11 @@ final class DisabledTest extends BundleTestCase
 
         $this->serve($kernel, Request::create('/track'), reset: true);
         $receipt = $mira->send([['name' => 'order completed', 'userId' => 'u_42']], idempotencyKey: 'order-1');
-        $flags = $this->service($kernel, MiraFlags::class);
-        self::assertInstanceOf(MiraFlags::class, $flags);
         $twig = $this->service($kernel, 'twig');
         self::assertInstanceOf(Environment::class, $twig);
 
         self::assertFalse($mira->enabled);
         self::assertSame(1, $receipt->accepted, 'a local receipt');
-        self::assertSame('fallback', $flags->for(userId: 'u_42')->variant('pricing-test', 'fallback'));
-        self::assertSame('', $twig->createTemplate('{{ mirafive_flags({userId: "u_42"}) }}')->render());
         // The tracker needs only the website key; only enabled: false removes it.
         self::assertSame($printsTag, str_contains($twig->createTemplate('{{ mirafive_script() }}')->render(), 'data-key="mf_ab12cd34_public"'));
         self::assertSame([], $this->spy($kernel)->requests);

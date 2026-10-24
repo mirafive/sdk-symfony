@@ -19,10 +19,7 @@ final class SpyTransport implements Transport
     {
         $this->requests[] = compact('method', 'url', 'headers', 'body');
 
-        return array_shift($this->answers) ?? match (true) {
-            str_ends_with($url, '/v1/flags') => new Response(200, [], '{"at":1,"flags":{},"v":1}'),
-            default => new Response(202, [], '{"batch":"x","accepted":1,"dropped":0}'),
-        };
+        return array_shift($this->answers) ?? new Response(202, [], '{"batch":"x","accepted":1,"dropped":0}');
     }
 
     /**

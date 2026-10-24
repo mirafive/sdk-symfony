@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MiraFive\Symfony\Tests;
 
-use MiraFive\Flags\MiraFlags;
 use MiraFive\Mira;
 use MiraFive\Symfony\Test\InteractsWithMira;
 use MiraFive\Symfony\Tests\Support\TestKernel;
@@ -58,21 +57,5 @@ final class MiraFakeTest extends KernelTestCase
 
         $this->expectException(AssertionFailedError::class);
         self::mira()->assertNothingTracked();
-    }
-
-    public function test_it_serves_a_flag_document_and_records_server_exposures(): void
-    {
-        self::mira()->serveFlags(['at' => 1727430000000, 'flags' => [
-            'new-checkout' => ['d' => 'off', 'r' => [['x' => 'on']], 's' => 'abcdefghijk1', 't' => 'b', 'u' => 'p'],
-            'pricing-test' => ['c' => 's', 'd' => 'a', 'e' => 'o', 'r' => [['w' => [['b', 10000]]]], 's' => 'abcdefghijk2', 't' => 'm', 'u' => 'p'],
-        ], 'v' => 1]);
-        $flags = self::getContainer()->get(MiraFlags::class);
-        self::assertInstanceOf(MiraFlags::class, $flags);
-
-        $user = $flags->for(userId: 'u_42');
-
-        self::assertTrue($user->enabled('new-checkout'));
-        self::assertSame('b', $user->variant('pricing-test'));
-        self::mira()->assertTracked('$exposure', static fn (array $event): bool => $event['properties'] === ['$experiment' => 'pricing-test', '$variant' => 'b']);
     }
 }

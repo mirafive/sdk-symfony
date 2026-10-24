@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking:** feature flags and A/B experiments are removed: the autowired `MiraFive\Flags\MiraFlags`, the Twig function `mirafive_flags()`, the `flags` option of `mirafive_script()`, the `Cache-Control: private, no-store` response listener, `MiraFake::serveFlags()` and the flag endpoints of the test transport.
+- **Breaking:** the config keys `flags.refresh_seconds` and `flags.cache` are removed. The cache service that shares the delivery pause between processes is now the top-level key `cache` (default `cache.app`).
+
 ## 1.0.0 — 2026-09-27
 
 First release, on `mirafive/sdk-php` 1.0 and its framework seams (`enabled`, `flushOnShutdown`, `flagsRefreshSeconds`, `handOff`, `deliverPrepared()`).

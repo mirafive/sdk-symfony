@@ -1,6 +1,6 @@
 # MIRA FIVE for Symfony
 
-Privacy-first analytics and feature flags for Symfony applications, hosted in the EU. The bundle wires the [PHP SDK](https://packagist.org/packages/mirafive/sdk-php) into your container, sends events after the response has gone out, prints the tracker tag in Twig and hands flag answers to the page.
+Privacy-first analytics for Symfony applications, hosted in the EU. The bundle wires the [PHP SDK](https://packagist.org/packages/mirafive/sdk-php) into your container, sends events after the response has gone out and prints the tracker tag in Twig.
 
 ## Install
 
@@ -113,7 +113,6 @@ It needs only the website key and prints nothing without one or with `enabled: f
 | `manual` | `data-manual` | no automatic pageviews |
 | `autocapture` | `data-autocapture` | clicks, submits, changes |
 | `site_search` | `data-site-search` | `true`, or the query parameters as a string or list |
-| `flags` | `data-flags` | load the flags chunk up front |
 | `track_localhost` | `data-track-localhost` | measure `localhost` too |
 | `host` | `data-host` | defaults to the configured host when it is not the default |
 | `src` | `src` | a pinned (`mira.<hash>.js`) or self-hosted copy of the tracker |
@@ -125,15 +124,14 @@ It needs only the website key and prints nothing without one or with `enabled: f
 The server client and the tracker tag each have a collection mode.
 
 - **Server events** default to **full** (`mode: full`), as with every MIRA FIVE server SDK: they may carry `userId`, `anonymousId` and `sessionId`. Use it for people who consented, or where you hold another lawful basis. `mode: consentless` sends no identifiers at all; passing one throws an `InvalidArgumentException`.
-- **The tracker tag** has its own mode, `script_mode`, default **consentless**, which needs no banner: no cookies, no storage, no identifiers. With `script_mode: full` (or `mirafive_script({mode: 'full'})`) the tracker stores ids only once the visitor consents; tell it with `mirafive('consent', true)` or `{statistics, experiments, targeting}` from your banner.
-- **Flags** take the banner's answer and the visitor's opt-out, see [Flags](#flags).
+- **The tracker tag** has its own mode, `script_mode`, default **consentless**, which needs no banner: no cookies, no storage, no identifiers. With `script_mode: full` (or `mirafive_script({mode: 'full'})`) the tracker stores ids only once the visitor consents; tell it with `mirafive('consent', true)` or `{statistics}` from your banner.
 
 Always:
 
 - **No personal data in event names or properties.** No e-mail addresses, names or free text a person typed.
 - **`userId` is pseudonymous**: your internal id, never `getUserIdentifier()` when that is an e-mail address.
 - **The secret key stays on the server.** Only `website_key` ever reaches a page; the bundle never prints the secret key.
-- Browsers sending Do Not Track or Global Privacy Control are not measured by the tracker, and `mirafive_flags()` treats `Sec-GPC: 1` or `DNT: 1` as an opt-out.
+- Browsers sending Do Not Track or Global Privacy Control are not measured by the tracker.
 
 ## Configuration
 
@@ -149,14 +147,12 @@ mirafive:
     script_mode: consentless                             # consentless | full, for the tracker tag
     enabled: true                                        # false: record nothing
     messenger: null                                      # true or a bus service id: deliver through Messenger
-    flags:
-        refresh_seconds: 30                              # at least 10
-        cache: cache.app                                 # PSR-16 or PSR-6 service id sharing the flag document; null for none
+    cache: cache.app                                     # PSR-16 or PSR-6 service id that shares the delivery pause between processes; null for none
     test: false                                          # record instead of send, for the test environment
 ```
 
-- **Disabled.** With `enabled: false`, or without a secret key, `Mira` and `MiraFlags` are still autowired but record nothing: nothing leaves the process, `send()` returns a local receipt, flags answer your fallbacks and `mirafive_flags()` prints nothing. `mirafive_script()` needs only the website key, so it is removed by `enabled: false` alone. Invalid input still throws, so a bug shows up before production. A typical `when@dev: { mirafive: { enabled: false } }`.
-- **Autowired services.** `MiraFive\Mira` and `MiraFive\Flags\MiraFlags`. The injected `MiraFlags` is `$mira->flags()`: one flag document per process.
+- **Disabled.** With `enabled: false`, or without a secret key, `Mira` is still autowired but records nothing: nothing leaves the process and `send()` returns a local receipt. `mirafive_script()` needs only the website key, so it is removed by `enabled: false` alone. Invalid input still throws, so a bug shows up before production. A typical `when@dev: { mirafive: { enabled: false } }`.
+- **Autowired services.** `MiraFive\Mira`, one per process.
 - **Errors.** Delivery never throws into your code. Failures go to the `mirafive` Monolog channel (or the `logger` service), as warnings.
 - **Idempotent sends.** `$mira->send([...], idempotencyKey: 'order-981')` sends at once and returns the receipt; the same key is stored once. Use it for webhooks that may arrive twice.
 
@@ -164,7 +160,7 @@ mirafive:
 
 **Flushing.** The bundle sends the buffer once per request on `kernel.terminate`, and once per command on `console.terminate`. It switches the PHP SDK's own shutdown flush off (`flushOnShutdown: false`), so nothing goes out twice. Under PHP-FPM, `kernel.terminate` runs after `fastcgi_finish_request()`, so delivery does not delay the response.
 
-**Worker runtimes** (FrankenPHP worker mode, RoadRunner, Swoole, `messenger:consume`). Every service reset between two requests (`kernel.reset`) sends what is left in the buffer, including events tracked after the terminate flush. In `messenger:consume`, where no request and no `kernel.*` event ever happens, the buffer is also sent after each handled or failed message, so events tracked inside your handlers go out message by message. Request state (whether a page carried a flag bootstrap) lives on the request, not in a service, so nothing leaks into the next request. The flag document is kept on purpose: it is a process-wide cache.
+**Worker runtimes** (FrankenPHP worker mode, RoadRunner, Swoole, `messenger:consume`). Every service reset between two requests (`kernel.reset`) sends what is left in the buffer, including events tracked after the terminate flush. In `messenger:consume`, where no request and no `kernel.*` event ever happens, the buffer is also sent after each handled or failed message, so events tracked inside your handlers go out message by message.
 
 **Messenger.** Sending happens in `kernel.terminate`, which is already after the response for PHP-FPM and FrankenPHP. If you would still rather send from a worker, hand the batches to Messenger:
 
@@ -185,55 +181,6 @@ framework:
 - A worker with `enabled: false` drops queued batches on purpose. A worker that is enabled but has no secret key logs an error on the `mirafive` channel and marks the message unrecoverable, so the batch lands in the failure transport instead of vanishing.
 - Without a routing entry the message is handled synchronously, i.e. sent in `kernel.terminate` as without Messenger.
 - `$mira->send()` is never queued: it sends at once and returns the collector's receipt. So does `bin/console mirafive:check`.
-- Flag documents and segment lookups are always fetched directly.
-
-## Flags
-
-```php
-use MiraFive\Flags\MiraFlags;
-use Symfony\Component\HttpFoundation\Request;
-
-public function checkout(MiraFlags $flags, Request $request): Response
-{
-    $id = $this->getUser()?->getId();
-    $user = $flags->for(
-        userId: $id === null ? null : (string) $id,
-        properties: ['plan' => 'pro'],                            // facts your rules test; never sent
-        consent: ['experiments' => true, 'targeting' => false],   // your banner's answer, when you have one
-        optedOut: $request->headers->get('Sec-GPC') === '1' || $request->headers->get('DNT') === '1',
-    );
-
-    if ($user->enabled('new-checkout')) {
-        // …
-    }
-
-    $limits = $user->config('limits', ['max' => 3]);
-    $variant = $user->variant('pricing-test');
-}
-```
-
-Reads never throw; without a document or for an unknown key they answer your fallback. The document is fetched from MIRA FIVE on first use and refreshed on read after `flags.refresh_seconds`. With PHP-FPM every request starts empty, so the bundle shares the document through `cache.app` by default; set `flags.cache` to another pool or to `null`. Server-counted experiments send one `$exposure` per person, experiment and variant through the same buffer. Consent, opt-out, reasons and error codes are described in the [PHP SDK README](https://github.com/mirafive/sdk-php#flags).
-
-### Bootstrap in Twig
-
-Hand the server's answers to the browser so the first paint shows the right variant:
-
-```twig
-<head>
-    {{ mirafive_flags({userId: app.user ? app.user.id : null, properties: {plan: 'pro'}}) }}
-    {{ mirafive_script({flags: true}) }}
-</head>
-```
-
-`mirafive_flags()` takes `userId`, `anonymousId`, `properties`, `consent` and `optedOut` (read from `Sec-GPC`/`DNT` when left out), or a `UserFlags` you already built in the controller. It prints `<script type="application/json" id="mirafive-flags">…</script>` with every `<`, `>` and `&` escaped, and only flags your website reads.
-
-A page with a bootstrap belongs to one person. The bundle therefore sets `Cache-Control: private, no-store` (`MiraFlags::BOOTSTRAP_HEADERS`) on the main response of any request that rendered one. For a `StreamedResponse`, where Twig renders after the headers are sent, set them yourself:
-
-```php
-foreach (MiraFlags::BOOTSTRAP_HEADERS as $name => $value) {
-    $response->headers->set($name, $value);
-}
-```
 
 ## Testing
 
@@ -246,7 +193,7 @@ when@test:
         test: true
 ```
 
-In test mode nothing touches the network: batches are recorded, a secret key is not needed, Messenger and the flag cache are bypassed. `MiraFive\Symfony\Test\MiraFake` asserts on what was tracked, including events still in the buffer:
+In test mode nothing touches the network: batches are recorded, a secret key is not needed, Messenger and the cache are bypassed. `MiraFive\Symfony\Test\MiraFake` asserts on what was tracked, including events still in the buffer:
 
 ```php
 use MiraFive\Symfony\Test\InteractsWithMira;
@@ -275,7 +222,6 @@ final class SignupTest extends WebTestCase
 | `assertIdentified(userId, ?traits)` | a `$identify` for this user, with exactly these traits when given |
 | `assertNothingTracked()` | |
 | `events(?name)`, `batches()` | what was recorded, decoded |
-| `serveFlags(document)` | the flag document `MiraFlags` fetches (FLAGS.md §3); call it before the first flag read |
 | `clear()` | forget what was recorded |
 
 Without a `WebTestCase`, get it from the container: `static::getContainer()->get(MiraFake::class)`.
@@ -287,8 +233,6 @@ Without a `WebTestCase`, get it from the container: `static::getContainer()->get
 - **Nothing arrives, no error.** Look at the `mirafive` log channel. Run `mirafive:check`. With `messenger` set, make sure a worker consumes the transport `DeliverBatch` is routed to.
 - **Events from a long-running command arrive only at the end.** They are sent on `console.terminate`. Call `$mira->flush()` at checkpoints of a long import.
 - **The Twig tag prints nothing.** `website_key` is empty or `mirafive.enabled` is false in this environment.
-- **Flags always answer the fallback.** `$flags->status()` shows whether a document arrived; `$user->evaluate($key)->errorCode` says why: `NOT_READY` (no document yet, see the log), `FLAG_NOT_FOUND` (not served to this server source), `NOT_ALLOWED` (consent, or an experiment counted in the browser).
-- **Pages with a bootstrap end up in a shared cache.** A reverse proxy that ignores `Cache-Control: private, no-store`, or a `StreamedResponse` (set the headers yourself).
 
 ## For AI agents
 
@@ -319,14 +263,14 @@ Do not add other analytics libraries, cookies or consent banners.
 (b) Facts for agents:
 
 - Package `mirafive/sdk-symfony`, bundle `MiraFive\Symfony\MiraFiveBundle`, config key `mirafive`. Core: `mirafive/sdk-php`, namespace `MiraFive`.
-- Autowired: `MiraFive\Mira` (`track`, `identify`, `send`, `flush`) and `MiraFive\Flags\MiraFlags` (`for(userId:, anonymousId:, properties:, consent:, optedOut:)` → `enabled`, `variant`, `config`, `evaluate`, `bootstrap`).
+- Autowired: `MiraFive\Mira` (`track`, `identify`, `send`, `flush`).
 - Env vars: `MIRAFIVE_SECRET_KEY` (server source, server-side only), `MIRAFIVE_WEBSITE_KEY` (public), `MIRAFIVE_HOST` (optional, default `https://events.mirafive.io`).
-- Without a secret key, or with `enabled: false`, server events and flags are a silent no-op; invalid input still throws `InvalidArgumentException`. `mirafive_script()` needs only the website key.
+- Without a secret key, or with `enabled: false`, server events are a silent no-op; invalid input still throws `InvalidArgumentException`. `mirafive_script()` needs only the website key.
 - Sent on `kernel.terminate` and `console.terminate`, on `kernel.reset` in worker runtimes, and after each message in `messenger:consume`. Never call `flush()` in a controller or message handler.
 - Config `mode` (server events, default `full`) and `script_mode` (tracker tag, default `consentless`) are separate.
-- Twig: `mirafive_script(options)` (tracker tag, website key, mode from `script_mode`), `mirafive_flags(unit)` (flag bootstrap; sets `Cache-Control: private, no-store`).
+- Twig: `mirafive_script(options)` (tracker tag, website key, mode from `script_mode`).
 - Delivery never throws; failures are logged on the `mirafive` channel. `send()` throws `MiraFive\MiraError`.
-- Tests: `when@test: { mirafive: { test: true } }`, then `MiraFive\Symfony\Test\MiraFake` (`assertTracked`, `assertNotTracked`, `assertIdentified`, `assertNothingTracked`, `serveFlags`) via the `InteractsWithMira` trait.
+- Tests: `when@test: { mirafive: { test: true } }`, then `MiraFive\Symfony\Test\MiraFake` (`assertTracked`, `assertNotTracked`, `assertIdentified`, `assertNothingTracked`) via the `InteractsWithMira` trait.
 - Verify: `bin/console mirafive:check` exits 0 and prints the reason `install_check`.
 - Wire contract: [mirafive/protocol](https://github.com/mirafive/protocol).
 

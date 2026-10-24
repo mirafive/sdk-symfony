@@ -10,8 +10,7 @@ use MiraFive\Http\Transport;
 use Throwable;
 
 /**
- * The transport of `mirafive.test`: records every batch and answers like MIRA FIVE, without the network. Serves the
- * flag document set with `serveFlags()`, empty otherwise.
+ * The transport of `mirafive.test`: records every batch and answers like MIRA FIVE, without the network.
  */
 final class RecordingTransport implements Transport
 {
@@ -21,22 +20,12 @@ final class RecordingTransport implements Transport
     /** @var list<Response|Throwable> */
     private array $answers = [];
 
-    private ?string $flags = null;
-
     public function request(string $method, string $url, array $headers, ?string $body, int $timeoutMs, int $connectTimeoutMs = 1_000): Response
     {
         $path = (string) parse_url($url, PHP_URL_PATH);
 
         if ($method === 'POST' && str_ends_with($path, '/v1/batch')) {
             return $this->batch($body ?? '');
-        }
-
-        if ($method === 'GET' && str_ends_with($path, '/v1/flags')) {
-            return new Response(200, ['ETag' => 'W/"f-test"'], $this->flags ?? '{"at":'.(int) floor(microtime(true) * 1000).',"flags":{},"v":1}');
-        }
-
-        if ($method === 'POST' && str_ends_with($path, '/v1/flags/segments')) {
-            return new Response(200, [], '{"units":[{"segments":[],"unavailable":[]}]}');
         }
 
         return new Response(404, [], '{"code":"not_found","detail":"not served by the MIRA FIVE test transport"}');
@@ -46,14 +35,6 @@ final class RecordingTransport implements Transport
     public function answerNextBatch(Response|Throwable $answer): void
     {
         $this->answers[] = $answer;
-    }
-
-    /**
-     * @param  string|array<string, mixed>  $document  a server flag document (FLAGS.md §3), JSON or decoded
-     */
-    public function serveFlags(string|array $document): void
-    {
-        $this->flags = is_string($document) ? $document : json_encode($document, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
     }
 
     /**

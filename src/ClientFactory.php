@@ -36,7 +36,6 @@ final class ClientFactory implements ResetInterface
         private readonly bool $enabled,
         private readonly Transport $transport,
         private readonly ?MessageBusInterface $bus = null,
-        private readonly int $refreshSeconds = 30,
         private readonly ?object $cache = null,
         private readonly ?LoggerInterface $logger = null,
         private readonly bool $test = false,
@@ -69,7 +68,6 @@ final class ClientFactory implements ResetInterface
             cache: $this->psr16(),
             enabled: $this->switchedOn() && $key !== '',
             flushOnShutdown: false,
-            flagsRefreshSeconds: $this->refreshSeconds,
             handOff: $this->handOff(),
         );
     }
@@ -102,7 +100,7 @@ final class ClientFactory implements ResetInterface
         return match (true) {
             $this->cache === null, $this->cache instanceof CacheInterface => $this->cache,
             $this->cache instanceof CacheItemPoolInterface => new Psr16Cache($this->cache),
-            default => throw new InvalidArgumentException('mirafive.flags.cache must name a PSR-16 or PSR-6 cache service, got '.$this->cache::class.'.'),
+            default => throw new InvalidArgumentException('mirafive.cache must name a PSR-16 or PSR-6 cache service, got '.$this->cache::class.'.'),
         };
     }
 }

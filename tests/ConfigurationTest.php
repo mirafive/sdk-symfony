@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MiraFive\Symfony\Tests;
 
-use MiraFive\Flags\MiraFlags;
 use MiraFive\Mode;
 use MiraFive\Symfony\MiraFiveBundle;
 use MiraFive\Symfony\Tests\Support\BundleTestCase;
@@ -42,7 +41,7 @@ final class ConfigurationTest extends BundleTestCase
             'script_mode' => 'consentless',
             'enabled' => true,
             'messenger' => null,
-            'flags' => ['refresh_seconds' => 30, 'cache' => 'cache.app'],
+            'cache' => 'cache.app',
             'test' => false,
         ], self::process([]));
     }
@@ -54,13 +53,6 @@ final class ConfigurationTest extends BundleTestCase
         self::assertSame('command.bus', self::process(['messenger' => 'command.bus'])['messenger']);
     }
 
-    public function test_the_refresh_interval_is_at_least_ten_seconds(): void
-    {
-        $this->expectException(InvalidConfigurationException::class);
-
-        self::process(['flags' => ['refresh_seconds' => 5]]);
-    }
-
     public function test_the_mode_is_full_or_consentless(): void
     {
         $this->expectException(InvalidConfigurationException::class);
@@ -68,16 +60,13 @@ final class ConfigurationTest extends BundleTestCase
         self::process(['mode' => 'anonymous']);
     }
 
-    public function test_the_clients_are_autowired_from_the_configuration(): void
+    public function test_the_client_is_autowired_from_the_configuration(): void
     {
         $kernel = $this->boot(['host' => 'https://collector.example.test/', 'mode' => 'consentless']);
         $mira = $this->mira($kernel);
-        $flags = $this->service($kernel, MiraFlags::class);
 
         self::assertSame('https://collector.example.test', $mira->host);
         self::assertSame(Mode::Consentless, $mira->mode);
-        self::assertInstanceOf(MiraFlags::class, $flags);
-        self::assertSame($mira->flags(), $flags, 'one MiraFlags per process');
     }
 
     public function test_the_secret_key_comes_from_the_environment_by_default(): void
@@ -85,7 +74,7 @@ final class ConfigurationTest extends BundleTestCase
         $_ENV['MIRAFIVE_SECRET_KEY'] = self::KEY;
 
         try {
-            $kernel = new Support\TestKernel(['flags' => ['cache' => null]]);
+            $kernel = new Support\TestKernel(['cache' => null]);
             $kernel->boot();
             $this->mira($kernel)->track('signup');
             $this->mira($kernel)->flush();

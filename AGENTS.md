@@ -1,8 +1,8 @@
 # AGENTS.md
 
 `mirafive/sdk-symfony`: the Symfony bundle of MIRA FIVE. It wires `mirafive/sdk-php` into the container; it has no
-transport and no flag evaluator of its own. The public surface is fixed by the `mirafive/sdk-symfony` section of
-`API.md` in the protocol repository; the wire by `PROTOCOL.md`, flag semantics by `FLAGS.md`. Change those first.
+transport of its own. The public surface is fixed by the `mirafive/sdk-symfony` section of
+`API.md` in the protocol repository; the wire by `PROTOCOL.md`. Change those first.
 
 ## Commands
 
@@ -32,7 +32,7 @@ Regenerate it whenever `composer.json` changes. CI uses `composer.json` and goes
 - PHP 8.3 syntax and functions only (CI runs 8.3–8.5): no property hooks, asymmetric visibility, pipe operator,
   `new` chained without parentheses, `array_find`/`array_any`/`array_all`.
 - Symfony `^6.4|^7.0|^8.0`. Use only APIs present in 6.4; CI covers 6.4, 7.4 and 8.x.
-- Never reimplement what sdk-php does (batching, retries, evaluation, bootstrap encoding). When the bundle needs a
+- Never reimplement what sdk-php does (batching, retries). When the bundle needs a
   hook, change sdk-php first.
 - `context.sdk` stays the core's `mirafive-php/<version>` (API.md: framework packages report the SDK they run on).
 - Delivery never throws into application code; the Messenger handler throws only for Messenger's retry strategy.

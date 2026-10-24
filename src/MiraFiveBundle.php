@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MiraFive\Symfony;
 
 use LogicException;
-use MiraFive\Flags\MiraFlags;
 use MiraFive\Http\Transport;
 use MiraFive\Mira;
 use MiraFive\Symfony\Command\CheckCommand;
@@ -78,15 +77,9 @@ final class MiraFiveBundle extends AbstractBundle
                         ->then(static fn (): null => null)
                     ->end()
                 ->end()
-                ->arrayNode('flags')
-                    ->addDefaultsIfNotSet()
-                    ->children()
-                        ->integerNode('refresh_seconds')->min(10)->defaultValue(30)->end()
-                        ->scalarNode('cache')
-                            ->info('A PSR-16 or PSR-6 cache service id sharing the flag document between processes; null for none.')
-                            ->defaultValue('cache.app')
-                        ->end()
-                    ->end()
+                ->scalarNode('cache')
+                    ->info('A PSR-16 or PSR-6 cache service id that shares the delivery pause between processes; null for none.')
+                    ->defaultValue('cache.app')
                 ->end()
                 ->booleanNode('test')
                     ->info('Record instead of sending, and expose MiraFive\Symfony\Test\MiraFake. For the test environment.')
@@ -103,8 +96,7 @@ final class MiraFiveBundle extends AbstractBundle
         $services = $container->services();
         $test = $config['test'] === true;
         $bus = $test ? null : $config['messenger'];
-        $flags = is_array($config['flags']) ? $config['flags'] : [];
-        $cache = $test ? null : $flags['cache'];
+        $cache = $test ? null : $config['cache'];
 
         if (is_string($bus) && ! interface_exists(MessageBusInterface::class)) {
             throw new LogicException('mirafive.messenger needs symfony/messenger: composer require symfony/messenger');
@@ -128,7 +120,6 @@ final class MiraFiveBundle extends AbstractBundle
                 '$enabled' => $config['enabled'],
                 '$transport' => service('mirafive.transport'),
                 '$bus' => is_string($bus) ? service($bus) : null,
-                '$refreshSeconds' => $flags['refresh_seconds'] ?? 30,
                 '$cache' => is_string($cache) && $cache !== '' ? service($cache) : null,
                 '$logger' => service('logger')->nullOnInvalid(),
                 '$test' => $test,
@@ -137,7 +128,6 @@ final class MiraFiveBundle extends AbstractBundle
             ->tag('kernel.reset', ['method' => 'reset']);
 
         $services->set(Mira::class)->factory([service(ClientFactory::class), 'mira']);
-        $services->set(MiraFlags::class)->factory([service(Mira::class), 'flags']);
 
         $services->set(Lifecycle::class)
             ->args([service(ClientFactory::class)])
@@ -159,7 +149,6 @@ final class MiraFiveBundle extends AbstractBundle
             $services->set(MiraFiveRuntime::class)
                 ->args([
                     service(ClientFactory::class),
-                    service('request_stack'),
                     $config['website_key'],
                     $config['script_mode'],
                 ])

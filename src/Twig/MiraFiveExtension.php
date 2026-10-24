@@ -13,7 +13,6 @@ final class MiraFiveExtension extends AbstractExtension
     {
         return [
             new TwigFunction('mirafive_script', [MiraFiveRuntime::class, 'script'], ['is_safe' => ['html']]),
-            new TwigFunction('mirafive_flags', [MiraFiveRuntime::class, 'flags'], ['is_safe' => ['html']]),
         ];
     }
 }

@@ -78,16 +78,6 @@ final readonly class MiraFake
     }
 
     /**
-     * Serves this flag document (FLAGS.md §3) to MiraFlags. Call it before the first flag read of the test.
-     *
-     * @param  string|array<string, mixed>  $document
-     */
-    public function serveFlags(string|array $document): void
-    {
-        $this->transport->serveFlags($document);
-    }
-
-    /**
      * @return list<array<array-key, mixed>> the recorded batches, decoded
      */
     public function batches(): array

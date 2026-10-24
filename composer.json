@@ -3,7 +3,7 @@
     "description": "MIRA FIVE SDK for Symfony",
     "type": "symfony-bundle",
     "license": "MIT",
-    "keywords": ["analytics", "privacy", "gdpr", "feature-flags", "experiments", "symfony", "bundle", "mirafive"],
+    "keywords": ["analytics", "privacy", "gdpr", "symfony", "bundle", "mirafive"],
     "homepage": "https://mirafive.io",
     "authors": [
         {
@@ -36,7 +36,7 @@
         "twig/twig": "^3.10"
     },
     "suggest": {
-        "symfony/twig-bundle": "For the mirafive_script() and mirafive_flags() Twig functions.",
+        "symfony/twig-bundle": "For the mirafive_script() Twig function.",
         "symfony/messenger": "To hand batches to a Messenger transport instead of sending them in the request."
     },
     "conflict": {

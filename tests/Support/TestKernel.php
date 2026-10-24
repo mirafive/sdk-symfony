@@ -62,7 +62,7 @@ final class TestKernel extends Kernel
             'router' => ['utf8' => true],
             ...$this->framework,
         ]);
-        $container->extension('twig', ['default_path' => __DIR__.'/templates', 'strict_variables' => true]);
+        $container->extension('twig', ['strict_variables' => true]);
         $container->extension('mirafive', $this->mirafive);
 
         $services = $container->services();
@@ -81,8 +81,6 @@ final class TestKernel extends Kernel
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
         $routes->add('track', '/track')->controller([AppController::class, 'track']);
-        $routes->add('page', '/page')->controller([AppController::class, 'page']);
-        $routes->add('flag', '/flag')->controller([AppController::class, 'flag']);
         $routes->add('plain', '/plain')->controller([AppController::class, 'plain']);
     }
 }

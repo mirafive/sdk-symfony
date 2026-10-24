@@ -32,7 +32,7 @@ abstract class BundleTestCase extends TestCase
      */
     protected function boot(array $mirafive = [], array $framework = [], bool $spy = true): TestKernel
     {
-        $kernel = new TestKernel(['secret_key' => self::KEY, 'flags' => ['cache' => null], ...$mirafive], $framework, $spy && ($mirafive['test'] ?? false) !== true);
+        $kernel = new TestKernel(['secret_key' => self::KEY, 'cache' => null, ...$mirafive], $framework, $spy && ($mirafive['test'] ?? false) !== true);
         $kernel->boot();
         $this->kernels[] = $kernel;
 

@@ -4,12 +4,7 @@ declare(strict_types=1);
 
 namespace MiraFive\Symfony\Tests;
 
-use MiraFive\Flags\Hash;
-use MiraFive\Symfony\Test\MiraFake;
 use MiraFive\Symfony\Tests\Support\BundleTestCase;
-use MiraFive\Symfony\Tests\Support\TestKernel;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\RequestStack;
 use Twig\Environment;
 use Twig\Error\RuntimeError;
 
@@ -17,28 +12,12 @@ final class TwigTest extends BundleTestCase
 {
     private const string QUEUE = '<script>window.mirafive=window.mirafive||function(){(mirafive.q=mirafive.q||[]).push(arguments)}</script>';
 
-    private const array DOCUMENT = [
-        'at' => 1727430000000,
-        'flags' => [
-            'new-checkout' => ['d' => 'off', 'r' => [['x' => 'on']], 's' => 'abcdefghijk1', 't' => 'b', 'u' => 'p', 'w' => 1],
-            'limits' => ['d' => 'pro', 'p' => ['pro' => ['note' => '</script><b>&']], 'r' => [], 's' => 'abcdefghijk2', 't' => 'c', 'u' => 'p', 'w' => 1],
-            'server-only' => ['d' => 'off', 'r' => [['x' => 'on']], 's' => 'abcdefghijk3', 't' => 'b', 'u' => 'p'],
-        ],
-        'v' => 1,
-    ];
-
     /**
      * @param  array<string, mixed>  $config
      */
-    private function render(string $template, array $config = [], ?Request $request = null, ?TestKernel &$kernel = null): string
+    private function render(string $template, array $config = []): string
     {
         $kernel = $this->boot(['website_key' => 'mf_ab12cd34_public', ...$config]);
-
-        if ($request !== null) {
-            $stack = $this->service($kernel, 'request_stack');
-            self::assertInstanceOf(RequestStack::class, $stack);
-            $stack->push($request);
-        }
 
         $twig = $this->service($kernel, 'twig');
         self::assertInstanceOf(Environment::class, $twig);
@@ -57,13 +36,13 @@ final class TwigTest extends BundleTestCase
     public function test_the_script_tag_takes_the_tracker_options(): void
     {
         $html = $this->render(
-            "{{ mirafive_script({mode: 'full', autocapture: true, site_search: ['q', 'term'], flags: true, hash: false, nonce: 'r4nd0m'}) }}",
+            "{{ mirafive_script({mode: 'full', autocapture: true, site_search: ['q', 'term'], hash: false, nonce: 'r4nd0m'}) }}",
             ['host' => 'https://collector.example.test'],
         );
 
         self::assertSame(
             '<script nonce="r4nd0m">window.mirafive=window.mirafive||function(){(mirafive.q=mirafive.q||[]).push(arguments)}</script>'."\n"
-            .'<script defer src="https://cdn.mirafive.io/mira.js" data-key="mf_ab12cd34_public" data-host="https://collector.example.test" data-mode="full" data-autocapture data-flags data-site-search="q,term" nonce="r4nd0m"></script>',
+            .'<script defer src="https://cdn.mirafive.io/mira.js" data-key="mf_ab12cd34_public" data-host="https://collector.example.test" data-mode="full" data-autocapture data-site-search="q,term" nonce="r4nd0m"></script>',
             $html,
         );
     }
@@ -105,46 +84,5 @@ final class TwigTest extends BundleTestCase
         $this->expectExceptionMessageMatches('/does not know autocaptur/');
 
         $this->render('{{ mirafive_script({autocaptur: true}) }}');
-    }
-
-    public function test_the_flag_bootstrap_is_escaped_once_and_holds_only_website_flags(): void
-    {
-        $kernel = $this->boot(['website_key' => 'mf_ab12cd34_public', 'test' => true]);
-        $fake = $this->service($kernel, MiraFake::class);
-        self::assertInstanceOf(MiraFake::class, $fake);
-        $fake->serveFlags(self::DOCUMENT);
-        $twig = $this->service($kernel, 'twig');
-        self::assertInstanceOf(Environment::class, $twig);
-
-        $html = $twig->createTemplate('{{ mirafive_flags({userId: "u_42", properties: {plan: "pro"}}) }}')->render();
-        // FLAGS.md §5.3: <, > and & as lower-case \u escapes, nothing else.
-        $u = chr(92).'u00';
-        $note = "{$u}3c/script{$u}3e{$u}3cb{$u}3e{$u}26";
-
-        self::assertSame(
-            '<script type="application/json" id="mirafive-flags">{"v":1,"at":0,"values":{"new-checkout":["on"],"limits":["pro",{"note":"'.$note.'"}]},"unit":"'.Hash::fnv1a32('u_42').'"}</script>',
-            preg_replace('/"at":\d+/', '"at":0', $html),
-        );
-    }
-
-    public function test_the_flag_bootstrap_honours_an_opt_out_header(): void
-    {
-        $request = Request::create('/', server: ['HTTP_SEC_GPC' => '1']);
-        $html = $this->render('{{ mirafive_flags({userId: "u_42"}) }}', ['test' => true], $request);
-
-        self::assertStringNotContainsString('"unit"', $html);
-    }
-
-    public function test_a_page_with_a_bootstrap_is_not_stored_by_shared_caches(): void
-    {
-        $kernel = $this->boot(['website_key' => 'mf_ab12cd34_public', 'test' => true]);
-
-        $page = $this->serve($kernel, Request::create('/page'), reset: true);
-        $plain = $this->serve($kernel, Request::create('/plain'), reset: true);
-
-        self::assertStringContainsString('id="mirafive-flags"', (string) $page->getContent());
-        self::assertTrue($page->headers->hasCacheControlDirective('no-store'));
-        self::assertTrue($page->headers->hasCacheControlDirective('private'));
-        self::assertFalse($plain->headers->hasCacheControlDirective('no-store'), 'the mark does not outlive its request');
     }
 }
