@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace MiraFive\Symfony\Tests\Support;
 
 use MiraFive\Symfony\MiraFiveBundle;
+use MiraFive\Testing\RecordingTransport;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Bundle\TwigBundle\TwigBundle;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpKernel\Kernel;
 use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
-
-use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
 final class TestKernel extends Kernel
 {
@@ -21,12 +20,10 @@ final class TestKernel extends Kernel
     /**
      * @param  array<string, mixed>  $mirafive
      * @param  array<string, mixed>  $framework  merged into the framework configuration
-     * @param  bool  $spy  replaces mirafive.transport with a public SpyTransport
      */
     public function __construct(
         private readonly array $mirafive = [],
         private readonly array $framework = [],
-        private readonly bool $spy = true,
     ) {
         parent::__construct('test', true);
     }
@@ -40,7 +37,7 @@ final class TestKernel extends Kernel
 
     public function getCacheDir(): string
     {
-        return sys_get_temp_dir().'/mirafive-sdk-symfony/'.md5(serialize([$this->mirafive, $this->framework, $this->spy, Kernel::VERSION])).'/cache';
+        return sys_get_temp_dir().'/mirafive-sdk-symfony/'.md5(serialize([$this->mirafive, $this->framework, Kernel::VERSION])).'/cache';
     }
 
     public function getLogDir(): string
@@ -66,21 +63,19 @@ final class TestKernel extends Kernel
         $container->extension('mirafive', $this->mirafive);
 
         $services = $container->services();
+        $services->set('logger', MemoryLogger::class)->public();
         $services->set(AppController::class)->autowire()->public()->tag('controller.service_arguments');
 
-        if ($this->spy) {
-            $services->set('mirafive.transport', SpyTransport::class)->public();
-            $services->alias(SpyTransport::class, 'mirafive.transport')->public();
+        // Every test kernel records instead of sending; `test: true` does the same on its own.
+        if (($this->mirafive['test'] ?? false) !== true) {
+            $services->set('mirafive.transport', RecordingTransport::class)->public();
+            $services->alias(RecordingTransport::class, 'mirafive.transport')->public();
         }
-
-        $services->set('test.mirafive.lifecycle_probe', LateTracker::class)
-            ->args([service('MiraFive\Mira')])
-            ->tag('kernel.event_subscriber');
     }
 
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
         $routes->add('track', '/track')->controller([AppController::class, 'track']);
-        $routes->add('plain', '/plain')->controller([AppController::class, 'plain']);
+        $routes->add('page', '/page')->controller([AppController::class, 'page']);
     }
 }

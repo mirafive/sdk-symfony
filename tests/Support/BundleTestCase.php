@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MiraFive\Symfony\Tests\Support;
 
 use MiraFive\Mira;
+use MiraFive\Testing\RecordingTransport;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
@@ -12,10 +13,17 @@ use Symfony\Component\HttpFoundation\Response;
 
 abstract class BundleTestCase extends TestCase
 {
-    public const string KEY = 'mf_ab12cd34_secretTail';
+    public const string KEY = 'mira_sk_live_secretTail';
 
     /** @var list<TestKernel> */
     private array $kernels = [];
+
+    private mixed $exceptionHandler = null;
+
+    protected function setUp(): void
+    {
+        $this->exceptionHandler = self::currentExceptionHandler();
+    }
 
     protected function tearDown(): void
     {
@@ -24,15 +32,29 @@ abstract class BundleTestCase extends TestCase
         }
 
         $this->kernels = [];
+
+        // Older Symfony 7.4 releases leave the kernel's exception handler installed; PHPUnit would
+        // flag every test as risky. Put back the handler the test started with.
+        for ($guard = 0; $guard < 10 && self::currentExceptionHandler() !== $this->exceptionHandler; $guard++) {
+            restore_exception_handler();
+        }
+    }
+
+    private static function currentExceptionHandler(): mixed
+    {
+        $handler = set_exception_handler(null);
+        restore_exception_handler();
+
+        return $handler;
     }
 
     /**
      * @param  array<string, mixed>  $mirafive
      * @param  array<string, mixed>  $framework
      */
-    protected function boot(array $mirafive = [], array $framework = [], bool $spy = true): TestKernel
+    protected function boot(array $mirafive = [], array $framework = []): TestKernel
     {
-        $kernel = new TestKernel(['secret_key' => self::KEY, 'cache' => null, ...$mirafive], $framework, $spy && ($mirafive['test'] ?? false) !== true);
+        $kernel = new TestKernel(['secret_key' => self::KEY, 'public_key' => 'mira_pk_live_123', 'host' => 'https://ingest.test', 'cache' => null, ...$mirafive], $framework);
         $kernel->boot();
         $this->kernels[] = $kernel;
 
@@ -49,12 +71,12 @@ abstract class BundleTestCase extends TestCase
         return $service;
     }
 
-    protected function spy(TestKernel $kernel): SpyTransport
+    protected function recording(TestKernel $kernel): RecordingTransport
     {
-        $spy = $this->service($kernel, SpyTransport::class);
-        self::assertInstanceOf(SpyTransport::class, $spy);
+        $transport = $this->service($kernel, 'mirafive.transport');
+        self::assertInstanceOf(RecordingTransport::class, $transport);
 
-        return $spy;
+        return $transport;
     }
 
     protected function mira(TestKernel $kernel): Mira
@@ -79,5 +101,15 @@ abstract class BundleTestCase extends TestCase
         }
 
         return $response;
+    }
+
+    /**
+     * Every event that reached the ingest.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function sent(TestKernel $kernel): array
+    {
+        return array_merge(...array_map(static fn (array $batch): array => $batch['events'] ?? [], $this->recording($kernel)->batches()));
     }
 }

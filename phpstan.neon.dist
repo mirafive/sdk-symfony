@@ -1,5 +1,6 @@
 includes:
     - vendor/phpstan/phpstan-symfony/extension.neon
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
 
 parameters:
     level: max
@@ -8,7 +9,7 @@ parameters:
         max: 80599
     paths:
         - src
-    # Public inputs are checked at runtime even where the PHPDoc already promises their shape.
+    # Public input is checked at runtime even where the PHPDoc already promises its shape.
     treatPhpDocTypesAsCertain: false
     ignoreErrors:
         # Used by applications' tests, not inside src.

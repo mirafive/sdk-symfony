@@ -1,8 +1,7 @@
 {
-    "preset": "laravel",
-    "rules": {
-        "declare_strict_types": true,
-        "final_class": false,
-        "method_chaining_indentation": false
-    }
+  "preset": "laravel",
+  "rules": {
+    "declare_strict_types": true,
+    "final_class": false
+  }
 }

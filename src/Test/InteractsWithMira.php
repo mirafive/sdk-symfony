@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MiraFive\Symfony\Test;
 
 use LogicException;
+use MiraFive\Testing\MiraFake;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**

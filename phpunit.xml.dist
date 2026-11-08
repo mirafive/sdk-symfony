@@ -6,7 +6,7 @@
          cacheDirectory=".phpunit.cache">
     <testsuites>
         <testsuite name="Bundle">
-            <directory>tests</directory>
+            <directory>tests/Feature</directory>
         </testsuite>
     </testsuites>
     <source>
@@ -16,8 +16,7 @@
     </source>
     <php>
         <env name="MIRAFIVE_SECRET_KEY" value="" force="true"/>
-        <env name="MIRAFIVE_WEBSITE_KEY" value="" force="true"/>
         <env name="MIRAFIVE_HOST" value="" force="true"/>
-        <env name="SHELL_VERBOSITY" value="-1" force="true"/>
+        <env name="MIRAFIVE_PUBLIC_KEY" value="" force="true"/>
     </php>
 </phpunit>

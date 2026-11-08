@@ -1,16 +1,24 @@
 # MIRA FIVE for Symfony
 
-Privacy-first analytics for Symfony applications, hosted in the EU. The bundle wires the [PHP SDK](https://packagist.org/packages/mirafive/sdk-php) into your container, sends events after the response has gone out and prints the tracker tag in Twig.
+[MIRA FIVE](https://mirafive.io) for Symfony 7.4 LTS and 8: revenue attribution and analytics by
+Cloo GmbH, compliant with GDPR and TDDDG. One bundle for both sides of your app:
+
+- **Server events:** inject `MiraFive\Mira` for events, revenue and touchpoints only your server
+  knows. They are sent after the response (`kernel.terminate`), or handed to Messenger.
+- **The browser SDK:** `{{ mirafive_script() }}` prints the script tag with your public key and the
+  consent mode you choose.
+- **Tests:** `mirafive.test: true` records instead of sending, with assertions.
+
+It builds on [`mirafive/sdk-php`](https://github.com/mirafive/sdk-php); everything documented
+there works here too. PHP 8.3 or newer.
 
 ## Install
 
-```bash
+```sh
 composer require mirafive/sdk-symfony
 ```
 
-PHP 8.3 or newer, Symfony 6.4, 7.x or 8.x. Twig and Messenger are optional.
-
-With Symfony Flex the bundle is registered for you. Without Flex, add it to `config/bundles.php`:
+Register the bundle in `config/bundles.php` if Flex did not:
 
 ```php
 return [
@@ -19,52 +27,33 @@ return [
 ];
 ```
 
-Create a **server source** in MIRA FIVE for the backend and, if you also measure the website, a **website source**. Put the keys in `.env.local` (or your secret store), never in the repository:
+Add the project's keys (MIRA FIVE dashboard, Settings, Sources) to `.env.local` or your secrets:
 
-```bash
-MIRAFIVE_SECRET_KEY=mf_ab12cd34_…   # server source, server-side only
-MIRAFIVE_WEBSITE_KEY=mf_ef56gh78_…  # website source, public
+```dotenv
+MIRAFIVE_SECRET_KEY=mira_sk_…
+MIRAFIVE_PUBLIC_KEY=mira_pk_…
 ```
 
-No configuration file is needed; the defaults read these variables. To change something, create `config/packages/mirafive.yaml` (see [Configuration](#configuration)).
+Then check them: the ingest answers whether the key works, and stores nothing.
 
-Check the setup:
-
-```bash
+```sh
 bin/console mirafive:check
 ```
 
-It sends an `$install_check` event, which is never stored or billed, and prints the receipt.
+No configuration file is needed; the bundle reads the variables above.
 
 ## Quickstart
 
-### Track from a controller
+**1. The browser SDK.** In `templates/base.html.twig`, inside `<head>`:
 
-`MiraFive\Mira` is autowired. `track()` only buffers; the bundle sends the buffer on `kernel.terminate`, after the response has reached the browser.
-
-```php
-use MiraFive\Mira;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
-
-final class SignupController extends AbstractController
-{
-    #[Route('/signup', methods: ['POST'])]
-    public function __invoke(Mira $mira): Response
-    {
-        $user = /* … create the account … */;
-
-        $mira->track('signup', userId: (string) $user->getId(), properties: ['plan' => 'pro']);
-
-        return $this->redirectToRoute('dashboard');
-    }
-}
+```twig
+{{ mirafive_script() }}
 ```
 
-For revenue, add `payment_id` (1–255 characters) to the properties next to `revenue` and `currency`: the payment provider's id of the payment. For Stripe pass the PaymentIntent id from a webhook: `$mira->track('order completed', properties: ['revenue' => 49, 'currency' => 'EUR', 'payment_id' => $paymentIntent->id]);`. MIRA FIVE merges the event with the payment it imports from your connected Stripe account, so the sale counts once.
+It follows your consent banner (CMP) by default and tracks page views, engagement, outbound
+clicks, downloads and form submits on its own.
 
-### Identify after login
+**2. Who the user is.** For example after login:
 
 ```php
 use MiraFive\Mira;
@@ -80,202 +69,270 @@ final readonly class IdentifyOnLogin
     {
         $user = $event->getUser();
 
-        // Your internal id. getUserIdentifier() is often the e-mail address: never send that.
-        $this->mira->identify((string) $user->getId(), ['plan' => $user->getPlan()]);
+        $this->mira->identify(
+            userId: $user->getUserIdentifier(),
+            traits: ['plan' => $user->getPlan()],
+            externalIds: ['stripe_customer' => $user->getStripeCustomerId()], // links Stripe's money to this user
+        );
     }
 }
 ```
 
-### The tracker tag in `base.html.twig`
+**3. What only your server knows.** Inject `MiraFive\Mira` anywhere:
 
-```twig
-<head>
-    {# … #}
-    {{ mirafive_script() }}
-</head>
+```php
+use MiraFive\Mira;
+
+final class InvoicePaidHandler
+{
+    public function __construct(private readonly Mira $mira) {}
+
+    public function __invoke(Invoice $invoice): void
+    {
+        // Money, in integer minor units: 4900 is 49.00 EUR.
+        $this->mira->revenue(
+            amount: $invoice->totalCents(),
+            currency: $invoice->currency(),
+            userId: $invoice->userId(),
+            entryId: 'stripe:'.$invoice->stripeId(),                     // the Stripe connector's copy counts once
+            eventId: Mira::eventIdFor('invoice:'.$invoice->id().':paid'), // a retried message counts once
+        );
+    }
+}
 ```
 
-This prints the hosted tracker with the website key:
-
-```html
-<script>window.mirafive=window.mirafive||function(){(mirafive.q=mirafive.q||[]).push(arguments)}</script>
-<script defer src="https://cdn.mirafive.io/mira.js" data-key="mf_ef56gh78_…"></script>
-```
-
-It needs only the website key and prints nothing without one or with `enabled: false`. Options map to the tracker's attributes:
-
-```twig
-{{ mirafive_script({mode: 'full', autocapture: true, site_search: ['q', 'term']}) }}
-```
-
-| Option | Attribute | |
-|---|---|---|
-| `mode` | `data-mode` | `'consentless'` or `'full'`; defaults to `script_mode` |
-| `hash` | `data-hash` | the site routes by `#` |
-| `manual` | `data-manual` | no automatic pageviews |
-| `autocapture` | `data-autocapture` | clicks, submits, changes |
-| `site_search` | `data-site-search` | `true`, or the query parameters as a string or list |
-| `track_localhost` | `data-track-localhost` | measure `localhost` too |
-| `host` | `data-host` | defaults to the configured host when it is not the default |
-| `src` | `src` | a pinned (`mira.<hash>.js`) or self-hosted copy of the tracker |
-| `integrity` | `integrity`, `crossorigin` | Subresource Integrity for a pinned copy, from the tracker's `manifest.json`; the rolling `mira.js` changes under one URL and cannot carry it |
-| `nonce` | `nonce` | set on both script tags, for a Content Security Policy |
-
-## Consent & privacy
-
-The server client and the tracker tag each have a collection mode.
-
-- **Server events** default to **full** (`mode: full`), as with every MIRA FIVE server SDK: they may carry `userId`, `anonymousId` and `sessionId`. Use it for people who consented, or where you hold another lawful basis. `mode: consentless` sends no identifiers at all; passing one throws an `InvalidArgumentException`.
-- **The tracker tag** has its own mode, `script_mode`, default **consentless**, which needs no banner: no cookies, no storage, no identifiers. With `script_mode: full` (or `mirafive_script({mode: 'full'})`) the tracker stores ids only once the visitor consents; tell it with `mirafive('consent', true)` or `{statistics}` from your banner.
-
-Always:
-
-- **No personal data in event names or properties.** No e-mail addresses, names or free text a person typed.
-- **`userId` is pseudonymous**: your internal id, never `getUserIdentifier()` when that is an e-mail address.
-- **The secret key stays on the server.** Only `website_key` ever reaches a page; the bundle never prints the secret key.
-- Browsers sending Do Not Track or Global Privacy Control are not measured by the tracker.
+Events wait in memory and leave after the response was sent, after a console command, after each
+Messenger message, and on `kernel.reset` in worker runtimes (FrankenPHP, RoadRunner).
 
 ## Configuration
 
-Every key is optional. The full reference with the defaults:
+Every option has a default; create `config/packages/mirafive.yaml` only to change one:
 
 ```yaml
-# config/packages/mirafive.yaml
 mirafive:
-    secret_key: '%env(default::MIRAFIVE_SECRET_KEY)%'    # server source; server-side only
-    website_key: '%env(default::MIRAFIVE_WEBSITE_KEY)%'  # website source; printed by mirafive_script()
-    host: '%env(default::MIRAFIVE_HOST)%'                # empty: https://collect.mirafive.io
-    mode: full                                           # full | consentless, for server events
-    script_mode: consentless                             # consentless | full, for the tracker tag
-    enabled: true                                        # false: record nothing
-    messenger: null                                      # true or a bus service id: deliver through Messenger
-    cache: cache.app                                     # PSR-16 or PSR-6 service id that shares the delivery pause between processes; null for none
-    test: false                                          # record instead of send, for the test environment
+  enabled: true # false: nothing leaves the app, mirafive_script() prints nothing
+  secret_key: "%env(default::MIRAFIVE_SECRET_KEY)%"
+  public_key: "%env(default::MIRAFIVE_PUBLIC_KEY)%"
+  host: "%env(default::MIRAFIVE_HOST)%" # empty: https://events.mirafive.io
+  messenger: null # true (messenger.default_bus) or a bus id: send batches through Messenger
+  cache: cache.app # a PSR-6 or PSR-16 pool that shares the delivery breaker; null for none
+  script:
+    src: null # default: the MIRA FIVE CDN, or {host}/sdk/mira.js for another host
+    consent: auto # auto, granted, denied, analytics
+    autocapture: true # false, or parts to turn off: { forms: false, outbound: false }
+  timeout_ms: 3000
+  flush_deadline_ms: 3000
+  max_retries: 2
+  test: false # record instead of sending (see Testing)
 ```
 
-- **Disabled.** With `enabled: false`, or without a secret key, `Mira` is still autowired but records nothing: nothing leaves the process and `send()` returns a local receipt. `mirafive_script()` needs only the website key, so it is removed by `enabled: false` alone. Invalid input still throws, so a bug shows up before production. A typical `when@dev: { mirafive: { enabled: false } }`.
-- **Autowired services.** `MiraFive\Mira`, one per process.
-- **Errors.** Delivery never throws into your code. Failures go to the `mirafive` Monolog channel (or the `logger` service), as warnings.
-- **Idempotent sends.** `$mira->send([...], idempotencyKey: 'order-981')` sends at once and returns the receipt; the same key is stored once. Use it for webhooks that may arrive twice.
+Without a secret key nothing is sent and nothing is logged, which keeps local development quiet;
+`bin/console mirafive:check` tells you why.
 
-## Messenger & worker runtimes
+## API
 
-**Flushing.** The bundle sends the buffer once per request on `kernel.terminate`, and once per command on `console.terminate`. It switches the PHP SDK's own shutdown flush off (`flushOnShutdown: false`), so nothing goes out twice. Under PHP-FPM, `kernel.terminate` runs after `fastcgi_finish_request()`, so delivery does not delay the response.
+Inject `MiraFive\Mira`. All methods take named arguments and never throw: problems are logged as
+warnings on the `mirafive` Monolog channel.
 
-**Worker runtimes** (FrankenPHP worker mode, RoadRunner, Swoole, `messenger:consume`). Every service reset between two requests (`kernel.reset`) sends what is left in the buffer, including events tracked after the terminate flush. In `messenger:consume`, where no request and no `kernel.*` event ever happens, the buffer is also sent after each handled or failed message, so events tracked inside your handlers go out message by message.
+| Method                                                                                        | What it sends                                                                                                                                       |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `track(event, userId, anonymousId, properties, …)`                                            | A custom event. Names starting with `$` are reserved                                                                                                |
+| `identify(userId, traits, externalIds, …)`                                                    | Who the user is. PII traits are encrypted at rest. `externalIds`: `stripe_customer`, `revenuecat_app_user`, `shopify_customer`, `shopware_customer` |
+| `group(groupId, userId, traits, …)`                                                           | The company or account a user belongs to                                                                                                            |
+| `revenue(amount, currency, entryId, entryKind, fee, tax, refundOf, product, subscription, …)` | One revenue ledger entry, in integer minor units                                                                                                    |
+| `touchpoint(kind, userId, channel, source, medium, campaign, answer, code, …)`                | A touchpoint that is not a visit: a survey answer, an offline contact, a code                                                                       |
+| `with(userId, anonymousId, consent, context)`                                                 | A client with these defaults; the call's own values win                                                                                             |
+| `Mira::eventIdFor('order:123:paid')`                                                          | A stable event id from your own key, identical in every MIRA FIVE SDK                                                                               |
+| `flush()`                                                                                     | Sends now                                                                                                                                           |
 
-**Messenger.** Sending happens in `kernel.terminate`, which is already after the response for PHP-FPM and FrankenPHP. If you would still rather send from a worker, hand the batches to Messenger:
+Every event method also takes `eventId`, `timestamp` (a date, epoch milliseconds or ISO string;
+past dates are fine for backfills), `consent` and `context` (`ip`, `userAgent`, `page`, `app`,
+`locale`, `timezone`, `location`). The [sdk-php README](https://github.com/mirafive/sdk-php#api-reference)
+documents every argument.
+
+To send the request's IP (for geo, never stored) and user agent with every event:
+
+```php
+$mira = $this->mira->with(context: [
+    'ip' => $request->getClientIp(),
+    'userAgent' => $request->headers->get('User-Agent'),
+]);
+$mira->track(event: 'report_exported', userId: $user->getUserIdentifier());
+```
+
+### Revenue
+
+```php
+// A subscription payment (the first one and every renewal), with store commission and VAT.
+$this->mira->revenue(
+    amount: 999,
+    currency: 'EUR',
+    userId: 'user_42',
+    entryId: 'revenuecat:txn_1000000123',
+    fee: 150,
+    tax: 160,
+    product: 'premium_monthly',
+    subscription: ['id' => 'sub_42', 'interval' => 'month'], // or intervalCount, periodStart, periodEnd
+);
+
+// A refund takes the money back, and the credit of the channels that earned it.
+$this->mira->revenue(
+    amount: -999,
+    currency: 'EUR',
+    userId: 'user_42',
+    entryKind: 'refund',
+    entryId: 'revenuecat:txn_1000000123:refund',
+    refundOf: 'revenuecat:txn_1000000123',
+);
+```
+
+`entryKind` is `charge` (the default), `subscription_payment` (the default with `subscription`),
+`refund` (the default for a negative amount), `dispute` or `dispute_won`. Proceeds are the amount
+minus `fee` and `tax`. `19.99` is refused: send `1999`.
+
+### Touchpoints
+
+```php
+// "How did you hear about us?" on your sign-up form.
+$this->mira->touchpoint(
+    kind: 'survey',
+    userId: $user->getUserIdentifier(),
+    source: $form->get('heardFrom')->getData(),     // podcast, instagram, a friend, …
+    answer: $form->get('heardFromText')->getData(), // passes MIRA's PII guard
+    eventId: Mira::eventIdFor('survey:'.$user->getUserIdentifier()),
+);
+
+// A trade fair contact from your CRM.
+$this->mira->touchpoint(kind: 'offline', userId: 'user_42', channel: 'referral', source: 'trade_fair_2026', externalRef: 'hubspot:123');
+```
+
+A touchpoint needs a user or anonymous id and a `channel` or a `source`. Kinds: `survey`,
+`offline`, `code`, `custom`.
+
+## Consent tiers
+
+Server events default to `not_applicable`: a paid invoice is a fact of your business. For events
+that describe what a visitor did, pass what your consent banner recorded:
+
+```php
+$this->mira->track(event: 'search', userId: $id, consent: ['analytics' => true, 'marketing' => false]);
+// or MiraFive\Consent::granted(), Consent::analyticsOnly(), Consent::denied()
+```
+
+| `consent` on the event                           | Tier    | What MIRA keeps                                                                               |
+| ------------------------------------------------ | ------- | --------------------------------------------------------------------------------------------- |
+| `not_applicable` (default), no `userId`          | T1      | The event, `anonymous_id` if given, geo from `context.ip` (the IP is discarded)               |
+| `not_applicable` with `userId`                   | T2      | Plus `user_id`, traits (PII traits encrypted at rest), revenue per person                     |
+| `{ analytics: 'granted' }`                       | T1 / T2 | As above                                                                                      |
+| `{ analytics: 'granted', marketing: 'granted' }` | T3      | Plus click ids, and later forwarding to ad platforms                                          |
+| `{ analytics: 'denied' \| 'unknown' }`           | T0      | No `user_id`, `anonymous_id` or `session_id`: the event counts, but is not linked to a person |
+
+The browser SDK printed by `mirafive_script()` follows your consent banner itself (`consent: auto`).
+
+## The script tag
+
+```twig
+{{ mirafive_script() }}
+{{ mirafive_script({ consent: 'analytics', autocapture: { forms: false }, nonce: csp_nonce('script') }) }}
+```
+
+| Option        | Default                    | Meaning                                                                                                 |
+| ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `consent`     | `script.consent`, `auto`   | `auto` follows the CMP; `granted`, `denied`, or `analytics` (analytics yes, marketing no)               |
+| `autocapture` | `script.autocapture`, true | `false` turns off all automatic events; or parts: `spa`, `engagement`, `outbound`, `downloads`, `forms` |
+| `src`, `host` | from the config            | Where the SDK loads from and where it sends                                                             |
+| `debug`       | `false`                    | Logs what the SDK does to the browser console                                                           |
+| `nonce`       | (none)                     | A Content Security Policy nonce for both tags                                                           |
+
+It prints the tag the MIRA FIVE dashboard shows: a stub that queues `mira(…)` calls made before the
+SDK has loaded, then the SDK. Nothing is printed with `enabled: false` or without a public key. A
+secret key is never printed: the tag becomes an HTML comment and the problem is logged.
+
+## Messenger and worker runtimes
+
+To keep delivery off your web servers, send batches through Messenger:
 
 ```yaml
 # config/packages/mirafive.yaml
 mirafive:
-    messenger: true                 # or a bus service id, e.g. messenger.bus.events
+  messenger: true # or the id of another bus
 
 # config/packages/messenger.yaml
 framework:
-    messenger:
-        routing:
-            MiraFive\Symfony\Messenger\DeliverBatch: async
+  messenger:
+    transports:
+      mirafive: "%env(MESSENGER_TRANSPORT_DSN)%"
+    routing:
+      MiraFive\Symfony\Messenger\DeliverBatch: mirafive
 ```
 
-- Every buffered flush is handed to Messenger as a `MiraFive\Symfony\Messenger\DeliverBatch` carrying the body exactly as the PHP SDK encoded it (its `handOff` seam). The message carries no key.
-- The worker delivers it with its own `Mira` (`deliverPrepared()`), byte for byte, so every retry reuses the batch id and MIRA FIVE stores a retried batch once. The worker's client retries briefly first; a failure that is still retryable (timeouts, `429`, `5xx`) is then thrown for your retry strategy, and refusals (`400`, `401`, `403`, `413`) are unrecoverable and go to the failure transport.
-- A worker with `enabled: false` drops queued batches on purpose. A worker that is enabled but has no secret key logs an error on the `mirafive` channel and marks the message unrecoverable, so the batch lands in the failure transport instead of vanishing.
-- Without a routing entry the message is handled synchronously, i.e. sent in `kernel.terminate` as without Messenger.
-- `$mira->send()` is never queued: it sends at once and returns the collector's receipt. So does `bin/console mirafive:check`.
+Each batch becomes a `DeliverBatch` message. It carries no key: the worker sends with its own
+`MIRAFIVE_SECRET_KEY`, so set it on workers too. A failed delivery is thrown for Messenger's retry
+strategy with the same events and sequence number, so a message handled twice is counted once. A
+batch the ingest refuses for good, or a worker without a key, is unrecoverable and goes to the
+failure transport.
+
+In worker runtimes (FrankenPHP, RoadRunner, Swoole), the client flushes on `kernel.terminate` and
+on `kernel.reset` between requests.
 
 ## Testing
-
-Switch the bundle to test mode in the test environment:
 
 ```yaml
 # config/packages/mirafive.yaml
 when@test:
-    mirafive:
-        test: true
+  mirafive:
+    test: true
 ```
-
-In test mode nothing touches the network: batches are recorded, a secret key is not needed, Messenger and the cache are bypassed. `MiraFive\Symfony\Test\MiraFake` asserts on what was tracked, including events still in the buffer:
 
 ```php
 use MiraFive\Symfony\Test\InteractsWithMira;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
-final class SignupTest extends WebTestCase
+final class CheckoutTest extends WebTestCase
 {
     use InteractsWithMira;
 
-    public function test_signup_is_tracked(): void
+    public function testCheckoutRecordsRevenue(): void
     {
         $client = static::createClient();
-        $client->request('POST', '/signup', ['plan' => 'pro']);
+        $client->request('POST', '/checkout', ['plan' => 'pro']);
 
-        self::mira()->assertTracked('signup', fn (array $event): bool => $event['properties']['plan'] === 'pro');
-        self::mira()->assertIdentified('42');
-        self::mira()->assertNotTracked('checkout');
+        static::mira()->assertTracked('checkout_completed');
+        static::mira()->assertRevenue(fn (array $event) => $event['revenue']['amount'] === 4900);
+        static::mira()->assertNoErrors();
     }
 }
 ```
 
-| `MiraFake` | |
-|---|---|
-| `assertTracked(name, ?where, ?times)` | `where` receives each wire event: `name`, `time`, `userId`, `anonymousId`, `properties`, `page` |
-| `assertNotTracked(name, ?where)` | |
-| `assertIdentified(userId, ?traits)` | a `$identify` for this user, with exactly these traits when given |
-| `assertNothingTracked()` | |
-| `events(?name)`, `batches()` | what was recorded, decoded |
-| `clear()` | forget what was recorded |
-
-Without a `WebTestCase`, get it from the container: `static::getContainer()->get(MiraFake::class)`.
+With `test: true` the client records instead of sending (no key needed). Input is checked exactly as
+in production, so an event the ingest would refuse fails the test. `static::mira()` is a
+`MiraFive\Testing\MiraFake`: `assertTracked(name, callback|times)`, `assertNotTracked`,
+`assertIdentified`, `assertGrouped`, `assertRevenue`, `assertTouchpoint`, `assertNothingTracked`,
+`assertNoErrors`; plus `events(?name)`, `errors()` and `clear()`. Callbacks get the wire event with
+snake_case keys (`user_id`, `properties`, `revenue`, `traits`, `external_ids`).
 
 ## Troubleshooting
 
-- **`bin/console mirafive:check` says disabled.** `MIRAFIVE_SECRET_KEY` is empty in this environment, or `mirafive.enabled` is false. `bin/console debug:container --env-vars` shows what Symfony sees.
-- **`unauthorized` / `website_key_as_bearer`.** `MIRAFIVE_SECRET_KEY` holds a wrong key or the public website key. Server code needs the secret key of a *server* source.
-- **Nothing arrives, no error.** Look at the `mirafive` log channel. Run `mirafive:check`. With `messenger` set, make sure a worker consumes the transport `DeliverBatch` is routed to.
-- **Events from a long-running command arrive only at the end.** They are sent on `console.terminate`. Call `$mira->flush()` at checkpoints of a long import.
-- **The Twig tag prints nothing.** `website_key` is empty or `mirafive.enabled` is false in this environment.
+Start with `bin/console mirafive:check`: it shows the host, the keys and the delivery mode, and
+asks the ingest whether the key works; nothing is stored or counted.
 
-## For AI agents
+- **Nothing arrives, nothing is logged.** `MIRAFIVE_SECRET_KEY` is not set for this environment
+  (check `bin/console debug:container --env-vars`).
+- **`batch dropped: HTTP 401 unknown_key`.** The key is wrong, revoked or from another host.
+- **`MIRAFIVE_SECRET_KEY holds a public key`.** Server code needs `mira_sk_…`; `mira_pk_…` is for
+  the script tag.
+- **`mirafive_script()` prints an HTML comment.** `MIRAFIVE_PUBLIC_KEY` holds a secret key; the log
+  says so.
+- **Messages pile up.** Run `bin/console messenger:consume mirafive` with `MIRAFIVE_SECRET_KEY` set.
+- **`revenue: amount must be an integer in minor units`.** Send cents: `1999`, not `19.99`.
 
-(a) A prompt for an agent adding MIRA FIVE to a Symfony application:
+## Development
 
-```text
-Add MIRA FIVE analytics to this Symfony application with the Composer package mirafive/sdk-symfony.
-
-1. Run `composer require mirafive/sdk-symfony` (PHP 8.3+, Symfony 6.4/7/8). With Flex the bundle registers
-   itself; otherwise add `MiraFive\Symfony\MiraFiveBundle::class => ['all' => true]` to config/bundles.php.
-2. Add `MIRAFIVE_SECRET_KEY=` and `MIRAFIVE_WEBSITE_KEY=` (empty values) to .env. Never commit real keys and never
-   render MIRAFIVE_SECRET_KEY into a template or JavaScript. No config file is needed.
-3. Add `when@test: { mirafive: { test: true } }` to config/packages/mirafive.yaml so tests never send.
-4. Inject `MiraFive\Mira` where the few business events happen (signup, order completed) and call
-   `$mira->track('signup', userId: (string) $user->getId(), properties: ['plan' => $plan]);`.
-   Use the internal user id, never an e-mail address or getUserIdentifier() if that is an e-mail.
-   No personal data in event names or properties.
-5. Add a LoginSuccessEvent listener calling `$mira->identify((string) $user->getId(), [...traits]);`.
-6. Put `{{ mirafive_script() }}` in the <head> of templates/base.html.twig. Keep the default consentless mode
-   unless the project already has a consent banner; then set `script_mode: full` in mirafive.yaml and pass
-   the banner's answer with `mirafive('consent', …)`.
-7. Do not call flush(): the bundle sends after the response and after console commands.
-8. Add a test using MiraFive\Symfony\Test\InteractsWithMira and `self::mira()->assertTracked('signup')`.
-9. Verify with `bin/console mirafive:check` once a real key is set, and report what you changed.
-Do not add other analytics libraries, cookies or consent banners.
+```sh
+composer install
+composer check   # pint --test, phpstan (max, strict, Symfony extension), pest
 ```
-
-(b) Facts for agents:
-
-- Package `mirafive/sdk-symfony`, bundle `MiraFive\Symfony\MiraFiveBundle`, config key `mirafive`. Core: `mirafive/sdk-php`, namespace `MiraFive`.
-- Autowired: `MiraFive\Mira` (`track`, `identify`, `send`, `flush`).
-- Env vars: `MIRAFIVE_SECRET_KEY` (server source, server-side only), `MIRAFIVE_WEBSITE_KEY` (public), `MIRAFIVE_HOST` (optional, default `https://collect.mirafive.io`).
-- Without a secret key, or with `enabled: false`, server events are a silent no-op; invalid input still throws `InvalidArgumentException`. `mirafive_script()` needs only the website key.
-- Sent on `kernel.terminate` and `console.terminate`, on `kernel.reset` in worker runtimes, and after each message in `messenger:consume`. Never call `flush()` in a controller or message handler.
-- Config `mode` (server events, default `full`) and `script_mode` (tracker tag, default `consentless`) are separate.
-- Twig: `mirafive_script(options)` (tracker tag, website key, mode from `script_mode`).
-- Delivery never throws; failures are logged on the `mirafive` channel. `send()` throws `MiraFive\MiraError`.
-- Tests: `when@test: { mirafive: { test: true } }`, then `MiraFive\Symfony\Test\MiraFake` (`assertTracked`, `assertNotTracked`, `assertIdentified`, `assertNothingTracked`) via the `InteractsWithMira` trait.
-- Verify: `bin/console mirafive:check` exits 0 and prints the reason `install_check`.
-- Wire contract: [mirafive/protocol](https://github.com/mirafive/protocol).
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Copyright (c) 2026 Cloo GmbH.
+MIT, Cloo GmbH. See [LICENSE](LICENSE).

@@ -7,14 +7,15 @@ namespace MiraFive\Symfony;
 use LogicException;
 use MiraFive\Http\Transport;
 use MiraFive\Mira;
+use MiraFive\ScriptTag;
 use MiraFive\Symfony\Command\CheckCommand;
 use MiraFive\Symfony\EventListener\Lifecycle;
 use MiraFive\Symfony\Messenger\DeliverBatch;
 use MiraFive\Symfony\Messenger\DeliverBatchHandler;
-use MiraFive\Symfony\Test\MiraFake;
-use MiraFive\Symfony\Test\RecordingTransport;
 use MiraFive\Symfony\Twig\MiraFiveExtension;
 use MiraFive\Symfony\Twig\MiraFiveRuntime;
+use MiraFive\Testing\MiraFake;
+use MiraFive\Testing\RecordingTransport;
 use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -39,52 +40,64 @@ final class MiraFiveBundle extends AbstractBundle
 
         $root
             ->children()
-                ->scalarNode('secret_key')
-                    ->info('Secret key of a server source. Server-side only; never render it into a page.')
-                    ->defaultValue('%env(default::MIRAFIVE_SECRET_KEY)%')
-                ->end()
-                ->scalarNode('website_key')
-                    ->info('Public website key, printed by mirafive_script().')
-                    ->defaultValue('%env(default::MIRAFIVE_WEBSITE_KEY)%')
-                ->end()
-                ->scalarNode('host')
-                    ->info('Ingest host with scheme. Empty means https://collect.mirafive.io.')
-                    ->defaultValue('%env(default::MIRAFIVE_HOST)%')
-                ->end()
-                ->enumNode('mode')
-                    ->info('Collection mode of server-side events.')
-                    ->values(['full', 'consentless'])
-                    ->defaultValue('full')
-                ->end()
-                ->enumNode('script_mode')
-                    ->info('Collection mode of the tracker printed by mirafive_script(). Consentless needs no banner.')
-                    ->values(['consentless', 'full'])
-                    ->defaultValue('consentless')
-                ->end()
-                ->booleanNode('enabled')
-                    ->info('When false, or when there is no secret key, the client records nothing.')
-                    ->defaultTrue()
-                ->end()
-                ->scalarNode('messenger')
-                    ->info('A message bus service id (true for messenger.default_bus) to deliver batches through Messenger.')
-                    ->defaultNull()
-                    ->beforeNormalization()
-                        ->ifTrue(static fn (mixed $value): bool => $value === true)
-                        ->then(static fn (): string => 'messenger.default_bus')
-                    ->end()
-                    ->beforeNormalization()
-                        ->ifTrue(static fn (mixed $value): bool => $value === false)
-                        ->then(static fn (): null => null)
-                    ->end()
-                ->end()
-                ->scalarNode('cache')
-                    ->info('A PSR-16 or PSR-6 cache service id that shares the delivery pause between processes; null for none.')
-                    ->defaultValue('cache.app')
-                ->end()
-                ->booleanNode('test')
-                    ->info('Record instead of sending, and expose MiraFive\Symfony\Test\MiraFake. For the test environment.')
-                    ->defaultFalse()
-                ->end()
+            ->booleanNode('enabled')
+            ->info('false: nothing leaves the app and mirafive_script() prints nothing; input is still checked.')
+            ->defaultTrue()
+            ->end()
+            ->scalarNode('secret_key')
+            ->info('The project\'s secret key (mira_sk_…), for server events and revenue. Never render it into a page.')
+            ->defaultValue('%env(default::MIRAFIVE_SECRET_KEY)%')
+            ->end()
+            ->scalarNode('public_key')
+            ->info('The project\'s public key (mira_pk_…), printed by mirafive_script() for the browser SDK.')
+            ->defaultValue('%env(default::MIRAFIVE_PUBLIC_KEY)%')
+            ->end()
+            ->scalarNode('host')
+            ->info('The ingest origin. Empty means https://events.mirafive.io.')
+            ->defaultValue('%env(default::MIRAFIVE_HOST)%')
+            ->end()
+            ->scalarNode('messenger')
+            ->info('A message bus service id (true for messenger.default_bus) that carries batches to a worker instead of sending them after the response.')
+            ->defaultNull()
+            ->beforeNormalization()
+            ->ifTrue(static fn (mixed $value): bool => $value === true)
+            ->then(static fn (): string => 'messenger.default_bus')
+            ->end()
+            ->beforeNormalization()
+            ->ifTrue(static fn (mixed $value): bool => $value === false)
+            ->then(static fn (): null => null)
+            ->end()
+            ->end()
+            ->scalarNode('cache')
+            ->info('A PSR-16 or PSR-6 cache service id that shares the delivery breaker between processes; null for none.')
+            ->defaultValue('cache.app')
+            ->end()
+            ->arrayNode('script')
+            ->info('What mirafive_script() prints. Options passed to the function win.')
+            ->addDefaultsIfNotSet()
+            ->children()
+            ->scalarNode('src')
+            ->info('Where the browser SDK loads from. Default: the MIRA FIVE CDN, or {host}/sdk/mira.js for another host.')
+            ->defaultNull()
+            ->end()
+            ->enumNode('consent')
+            ->info('auto follows the consent banner; analytics: analytics yes, marketing no.')
+            ->values(ScriptTag::CONSENT)
+            ->defaultValue('auto')
+            ->end()
+            ->variableNode('autocapture')
+            ->info('false turns off all automatic events; or turn off parts: {forms: false, outbound: false}.')
+            ->defaultTrue()
+            ->end()
+            ->end()
+            ->end()
+            ->integerNode('timeout_ms')->min(1)->defaultValue(3_000)->end()
+            ->integerNode('flush_deadline_ms')->min(1)->defaultValue(3_000)->end()
+            ->integerNode('max_retries')->min(0)->defaultValue(2)->end()
+            ->booleanNode('test')
+            ->info('Record instead of sending, and expose MiraFive\Testing\MiraFake. For the test environment.')
+            ->defaultFalse()
+            ->end()
             ->end();
     }
 
@@ -103,10 +116,10 @@ final class MiraFiveBundle extends AbstractBundle
         }
 
         if ($test) {
-            $services->set(RecordingTransport::class);
-            $services->alias('mirafive.transport', RecordingTransport::class);
+            $services->set('mirafive.transport', RecordingTransport::class)->public();
+            $services->alias(RecordingTransport::class, 'mirafive.transport')->public();
             $services->set(MiraFake::class)
-                ->args([service(Mira::class), service(RecordingTransport::class)])
+                ->args([service(Mira::class), service('mirafive.transport')])
                 ->public();
         } else {
             $services->set('mirafive.transport', Transport::class)->factory([ClientFactory::class, 'defaultTransport']);
@@ -116,11 +129,13 @@ final class MiraFiveBundle extends AbstractBundle
             ->args([
                 '$secretKey' => $config['secret_key'],
                 '$host' => $config['host'],
-                '$mode' => $config['mode'],
                 '$enabled' => $config['enabled'],
                 '$transport' => service('mirafive.transport'),
+                '$timeoutMs' => $config['timeout_ms'],
+                '$flushDeadlineMs' => $config['flush_deadline_ms'],
+                '$maxRetries' => $config['max_retries'],
                 '$bus' => is_string($bus) ? service($bus) : null,
-                '$cache' => is_string($cache) && $cache !== '' ? service($cache) : null,
+                '$cache' => is_string($cache) && $cache !== '' ? service($cache)->ignoreOnInvalid() : null,
                 '$logger' => service('logger')->nullOnInvalid(),
                 '$test' => $test,
             ])
@@ -134,7 +149,7 @@ final class MiraFiveBundle extends AbstractBundle
             ->tag('kernel.event_subscriber');
 
         $services->set(CheckCommand::class)
-            ->args([service(Mira::class)])
+            ->args([service(ClientFactory::class), $config['public_key']])
             ->tag('console.command', ['command' => CheckCommand::NAME, 'description' => CheckCommand::DESCRIPTION]);
 
         if (is_string($bus)) {
@@ -149,10 +164,12 @@ final class MiraFiveBundle extends AbstractBundle
             $services->set(MiraFiveRuntime::class)
                 ->args([
                     service(ClientFactory::class),
-                    $config['website_key'],
-                    $config['script_mode'],
+                    $config['public_key'],
+                    $config['script'],
+                    service('logger')->nullOnInvalid(),
                 ])
-                ->tag('twig.runtime');
+                ->tag('twig.runtime')
+                ->tag('monolog.logger', ['channel' => 'mirafive']);
         }
     }
 }
