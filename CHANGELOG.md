@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.0 — 2026-11-09
+
+### Changed
+
+- Requires [`mirafive/sdk-php`](https://github.com/mirafive/sdk-php) 2.1, which deprecates `fee`
+  and `tax` on `revenue()`: MIRA FIVE counts revenue as the customer paid it, VAT included.
+  Passing them still works and does nothing; they are removed in 3.0.0.
+
 ## 2.0.0 — 2026-11-08
 
 A rewrite for the MIRA FIVE platform, on [`mirafive/sdk-php`](https://github.com/mirafive/sdk-php)

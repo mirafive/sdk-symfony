@@ -139,7 +139,7 @@ warnings on the `mirafive` Monolog channel.
 | `track(event, userId, anonymousId, properties, …)`                                            | A custom event. Names starting with `$` are reserved                                                                                                |
 | `identify(userId, traits, externalIds, …)`                                                    | Who the user is. PII traits are encrypted at rest. `externalIds`: `stripe_customer`, `revenuecat_app_user`, `shopify_customer`, `shopware_customer` |
 | `group(groupId, userId, traits, …)`                                                           | The company or account a user belongs to                                                                                                            |
-| `revenue(amount, currency, entryId, entryKind, fee, tax, refundOf, product, subscription, …)` | One revenue ledger entry, in integer minor units                                                                                                    |
+| `revenue(amount, currency, entryId, entryKind, refundOf, product, subscription, …)`           | One revenue ledger entry, in integer minor units                                                                                                    |
 | `touchpoint(kind, userId, channel, source, medium, campaign, answer, code, …)`                | A touchpoint that is not a visit: a survey answer, an offline contact, a code                                                                       |
 | `with(userId, anonymousId, consent, context)`                                                 | A client with these defaults; the call's own values win                                                                                             |
 | `Mira::eventIdFor('order:123:paid')`                                                          | A stable event id from your own key, identical in every MIRA FIVE SDK                                                                               |
@@ -163,14 +163,12 @@ $mira->track(event: 'report_exported', userId: $user->getUserIdentifier());
 ### Revenue
 
 ```php
-// A subscription payment (the first one and every renewal), with store commission and VAT.
+// A subscription payment (the first one and every renewal).
 $this->mira->revenue(
     amount: 999,
     currency: 'EUR',
     userId: 'user_42',
     entryId: 'revenuecat:txn_1000000123',
-    fee: 150,
-    tax: 160,
     product: 'premium_monthly',
     subscription: ['id' => 'sub_42', 'interval' => 'month'], // or intervalCount, periodStart, periodEnd
 );
@@ -187,8 +185,8 @@ $this->mira->revenue(
 ```
 
 `entryKind` is `charge` (the default), `subscription_payment` (the default with `subscription`),
-`refund` (the default for a negative amount), `dispute` or `dispute_won`. Proceeds are the amount
-minus `fee` and `tax`. `19.99` is refused: send `1999`.
+`refund` (the default for a negative amount), `dispute` or `dispute_won`. `amount` is what the
+customer paid, VAT included. `19.99` is refused: send `1999`.
 
 ### Touchpoints
 
