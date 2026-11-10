@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.0 — 2026-11-10
+
+### Added
+
+- `MiraFive\Mira::deletePerson($userId)` on the injected client: erases one person (GDPR Art. 17)
+  with the secret key and returns the proof. Synchronous, throws a `MiraError` with `retryable`;
+  idempotent. In test mode the client answers it with an empty proof.
+
+### Changed
+
+- Requires [`mirafive/sdk-php`](https://github.com/mirafive/sdk-php) 2.2.1.
+
 ## 2.1.0 — 2026-11-09
 
 ### Changed
